@@ -7,6 +7,21 @@
 
 Собран на дизайн-системе Square (Documentolog, d8n). Версия 1.0.0 от 01.10.2026.
 
+## Как поставить за минуту
+
+1. **Скачайте архив:** [onboarding-motion.zip](https://github.com/nurdkub/onboarding-motion-skill/raw/main/onboarding-motion.zip).
+   Распаковывать не нужно.
+2. **Откройте Claude** (сайт claude.ai или приложение) → **Настройки** → **Capabilities** →
+   раздел **Skills** → **Upload skill**.
+3. **Выберите скачанный архив.** Скилл `onboarding-motion` появится в списке — проверьте,
+   что переключатель рядом с ним включён.
+
+Готово. Попросите Claude, например: «Сделай онбординг-подсказку со сценой для кнопки
+„Папка“: отметить два документа, выбрать папку, документы переносятся». Claude сам возьмёт
+правила скилла.
+
+Новая версия выходит — скачайте архив заново и загрузите его так же, поверх старого.
+
 ## Что внутри
 
 ```
@@ -25,7 +40,7 @@ skills/onboarding-motion/
 onboarding-motion.zip   та же папка скилла одним архивом — для claude.ai
 ```
 
-## Установка в Claude Code из GitHub
+## Для Claude Code: установка из GitHub
 
 В сеансе Claude Code:
 
@@ -51,11 +66,11 @@ claude plugin install onboarding-motion@square-onboarding
 - `~/.claude/skills/onboarding-motion/` — для всех проектов;
 - `.claude/skills/onboarding-motion/` в корне проекта — только для него.
 
-## claude.ai
+## Что умеет скилл в claude.ai и в Claude Code
 
-Загрузить `onboarding-motion.zip` в настройках Claude, раздел навыков (Skills). В архиве —
-папка `onboarding-motion/` с `SKILL.md` в корне. В claude.ai скилл работает как справочник
-правил и образец кода: движок из `assets/engine/` не запускается сам, его копируют в проект.
+В claude.ai и приложении Claude скилл — свод правил и образец кода: Claude по нему
+описывает сцену, пишет её код и проверяет тексты. Чтобы сцена заиграла, код запускают
+в проекте на компонентах Square, например в полигоне Square DS Prototyping.
 
 ## Движок
 
