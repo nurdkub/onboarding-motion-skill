@@ -39,9 +39,11 @@ export function FolderMoveScene() {
     <OnboardingScene story={story}>
       {(s) => (
         <ScenePlane>
+          {/* Панель на белой плоскости сцены: кнопки neutral/secondary — onColor
+              рассчитаны на серый фон страницы и на белом теряют форму. */}
           <ActionBar case="documentList" style={{ padding: 0 }}>
             <ActionBarActionButtons>
-              <Button color="onColor" priority="primary" size="extraSmall">
+              <Button color="neutral" priority="secondary" size="extraSmall">
                 Экспорт в Excel
               </Button>
               <Dropdown
@@ -49,8 +51,8 @@ export function FolderMoveScene() {
                 trigger={
                   <SceneTarget id="folder" inline>
                     <Button
-                      color="onColor"
-                      priority="primary"
+                      color="neutral"
+                      priority="secondary"
                       size="extraSmall"
                       rightIcon={<Icon name="expand_more" />}
                     >
