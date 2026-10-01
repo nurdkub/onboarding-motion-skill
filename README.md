@@ -9,8 +9,9 @@
 
 ## Как поставить за минуту
 
-1. **Скачайте архив:** [onboarding-motion.zip](https://github.com/nurdkub/onboarding-motion-skill/raw/main/onboarding-motion.zip).
-   Распаковывать не нужно.
+1. **Скачайте архив:** [onboarding-motion.zip](https://github.com/nurdkub/onboarding-motion-skill/releases/latest/download/onboarding-motion.zip).
+   Распаковывать не нужно. Скачивайте именно по этой ссылке, а не кнопкой
+   **Code → Download ZIP**: тот архив — весь репозиторий, Claude его не примет.
 2. **Откройте Claude** (сайт claude.ai или приложение) → **Настройки** → **Capabilities** →
    раздел **Skills** → **Upload skill**.
 3. **Выберите скачанный архив.** Скилл `onboarding-motion` появится в списке — проверьте,
@@ -37,7 +38,6 @@ skills/onboarding-motion/
   assets/
     engine/             движок: motion.ts, story.ts, OnboardingScene.tsx, OnboardingTip.tsx, onboarding.css, index.ts
     examples/           две готовые сцены: выбор получателя по DG Name и перенос документов в папку
-onboarding-motion.zip   та же папка скилла одним архивом — для claude.ai
 ```
 
 ## Для Claude Code: установка из GitHub
