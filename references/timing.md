@@ -68,8 +68,9 @@
 - Подсказка шириной 360: сцена сверху, под ней поле `paddings/07`, заголовок `headline/h6`
   цветом `colors/text/neutral/primary`, зазор `gap/02`, текст `body/m` цветом
   `colors/text/neutral/secondary`. Фон `colors/surface/onColor/neutral/primary`, тень как у `Modal`.
-- Фон холста `colors/background/neutral/subtle-1` с полем `paddings/07`, на нём белая плоскость
-  с полем `paddings/08` — экран в миниатюре по правилам `docs/screen.md`.
+- Белая плоскость `colors/surface/onColor/neutral/primary` занимает холст целиком, без рамки
+  вокруг; её поле — `paddings/08`. Серый фон вокруг плоскости читался толстой рамкой и снят
+  01.10.2026.
 - Курсор — кружок 20 px холста цветом `colors/icon/neutral/tertiaryHovered`, прозрачность 0,8,
   с обводкой `borderWidth/hovered` цветом `colors/surface/onColor/neutral/primary`; центр кружка —
   точка касания. Круглый в любой продуктовой теме, не по токену радиуса.

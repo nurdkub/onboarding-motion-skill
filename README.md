@@ -49,6 +49,7 @@ references/
 assets/
   engine/               движок: motion.ts, story.ts, OnboardingScene.tsx, OnboardingTip.tsx, onboarding.css, index.ts
   examples/             две готовые сцены: выбор получателя по DG Name и перенос документов в папку
+  preview/              шаблон превью: страница, где подсказку можно навести и посмотреть без полигона
 ```
 
 ## Для Claude Code

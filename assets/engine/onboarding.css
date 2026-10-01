@@ -21,11 +21,13 @@
   inset-inline-start: 0;
   transform-origin: 0 0;
   box-sizing: border-box;
-  padding: var(--paddings-07);
+  /* Без поля: белая плоскость занимает окошко целиком. С полем вокруг неё
+     проглядывал фон сцены и читался толстой серой рамкой (решение 01.10.2026). */
+  padding: 0;
   overflow: hidden;
 }
 
-/* Белая плоскость — экран в миниатюре. Поле плоскости — paddings/08. */
+/* Белая плоскость — экран в миниатюре, во всё окошко. Поле плоскости — paddings/08. */
 .OnbScene__plane {
   box-sizing: border-box;
   block-size: 100%;

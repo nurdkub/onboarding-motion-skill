@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- МЕНЯТЬ: заголовок страницы — заголовок подсказки -->
+<title>Подсказка: поиск получателя по БИН</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<!--
+  Шаблон превью онбординг-подсказки (скилл onboarding-motion).
+
+  Что это: страница, на которой подсказку можно навести и посмотреть, пока сцены нет в полигоне.
+  Такт, кривые и отклик на нажатие — числа motion.ts движка один в один (блок «числа motion.ts»
+  ниже не менять). Компоненты и цвета нарисованы приближённо: финальный вид — в полигоне Square,
+  где сцена собрана из настоящих компонентов.
+
+  Что менять под свою фичу — места с пометкой «МЕНЯТЬ»:
+  1. заголовок и подзаголовок страницы, кусок формы с знаком «i»;
+  2. разметку сцены внутри .plane (миниатюра интерфейса);
+  3. данные и сценарий (story) в скрипте, функцию render();
+  4. заголовок и текст подсказки (.tip-title, .tip-desc).
+  Подсказка открывается по наведению на «i» через 250 мс и по нажатию на телефоне, цикл каждый
+  раз с начала. Закреплять её открытой нельзя: человек должен навести сам.
+-->
+<style>
+/* Цвета — приближение токенов Square для превью, не сами токены. */
+:root {
+  --bg-page: #F3F4F6;
+  --surface: #FFFFFF;
+  --text-primary: #1A1A1A;
+  --text-secondary: #5E6670;
+  --text-placeholder: #9AA1AA;
+  --border: #CDD2D8;
+  --border-hover: #9AA1AA;
+  --accent: #1F5FD6;
+  --accent-tint: #D7E3F8;
+  --row-hover: #F1F3F6;
+  --row-pressed: #E4E8ED;
+  --chip-bg: #EDF0F4;
+  --cursor: #8C94A0;
+  --error: #C8322B;
+  --shadow: 0 0 4px 1px rgb(26 26 26 / 4%), 0 0 48px rgb(26 26 26 / 12%);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg-page: #15181C; --surface: #1F2328; --text-primary: #F1F3F5; --text-secondary: #A6AEB8;
+    --text-placeholder: #6E7680; --border: #3B424A; --border-hover: #5C646E; --accent: #6D9CF2;
+    --accent-tint: #2C3D5C; --row-hover: #282D33; --row-pressed: #313740; --chip-bg: #2C3138;
+    --cursor: #A6AEB8; --shadow: 0 0 4px 1px rgb(0 0 0 / 30%), 0 0 48px rgb(0 0 0 / 45%);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg-page: #15181C; --surface: #1F2328; --text-primary: #F1F3F5; --text-secondary: #A6AEB8;
+  --text-placeholder: #6E7680; --border: #3B424A; --border-hover: #5C646E; --accent: #6D9CF2;
+  --accent-tint: #2C3D5C; --row-hover: #282D33; --row-pressed: #313740; --chip-bg: #2C3138;
+  --cursor: #A6AEB8; --shadow: 0 0 4px 1px rgb(0 0 0 / 30%), 0 0 48px rgb(0 0 0 / 45%);
+  color-scheme: dark;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg-page);
+  color: var(--text-primary);
+  font: 14px/20px Roboto, "Segoe UI", Arial, sans-serif;
+}
+[hidden] { display: none !important; }
+.mi { font-family: "Material Icons"; font-size: 16px; line-height: 1; font-weight: normal; font-style: normal; display: inline-block; letter-spacing: normal; text-transform: none; white-space: nowrap; direction: ltr; -webkit-font-smoothing: antialiased; }
+
+.page { max-width: 760px; margin: 0 auto; padding-inline: 20px; padding-block: 48px 64px; }
+.page h1 { font-size: 22px; line-height: 28px; font-weight: 500; margin: 0 0 6px; text-wrap: balance; }
+.page .lead { color: var(--text-secondary); margin: 0 0 32px; max-width: 60ch; }
+
+/* МЕНЯТЬ: кусок настоящего экрана, у элемента которого живёт подсказка */
+.form { background: var(--surface); padding: 20px; min-height: 420px; }
+.form-label { display: inline-flex; align-items: center; gap: 4px; margin-bottom: 4px; color: var(--text-secondary); }
+.req { color: var(--error); }
+.form-input {
+  height: 40px; border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; padding: 0 12px; color: var(--text-placeholder); max-width: 520px;
+}
+
+/* ── знак «i» и подсказка ───────────────────────────────────── */
+.info { position: relative; display: inline-flex; color: var(--text-secondary); cursor: help; }
+.info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bubble {
+  position: absolute; top: calc(100% + 8px); left: -8px; z-index: 50;
+  width: 360px; background: var(--surface); box-shadow: var(--shadow); color: var(--text-primary);
+  text-align: left; display: flex; flex-direction: column; cursor: default;
+  animation: bubble-in 200ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@keyframes bubble-in { from { opacity: 0; transform: translate3d(0, -4px, 0) scale(0.98); } to { opacity: 1; transform: none; } }
+.tip-text { display: flex; flex-direction: column; gap: 2px; padding: 16px; }
+.tip-title { font-size: 16px; line-height: 22px; font-weight: 500; color: var(--text-primary); }
+.tip-desc { color: var(--text-secondary); }
+
+/* ── сцена: белая плоскость во всё окошко, без рамки ───────── */
+.scene { display: block; position: relative; width: 360px; height: 240px; overflow: hidden; background: var(--surface); }
+.canvas {
+  display: block; position: absolute; top: 0; left: 0; width: 480px; height: 320px;
+  transform: scale(0.75); transform-origin: 0 0; padding: 0; overflow: hidden;
+}
+.plane { height: 100%; padding: 20px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
+
+/* МЕНЯТЬ: элементы миниатюры — приближение компонентов Square */
+.field { position: relative; display: flex; flex-direction: column; gap: 4px; }
+.field > .lbl { color: var(--text-secondary); }
+.input {
+  height: 40px; border: 1px solid var(--border); background: var(--surface);
+  display: flex; align-items: center; padding: 0 12px; color: var(--text-primary);
+  transition: border-color 200ms, box-shadow 200ms, background-color 100ms;
+}
+.ph { color: var(--text-placeholder); }
+.caret { width: 1px; height: 18px; background: var(--text-primary); margin-left: 1px; display: none; }
+[data-demo-state="hovered"] > .input { border-color: var(--border-hover); }
+[data-demo-state="pressed"] > .input { border-color: var(--border-hover); background: var(--row-hover); }
+[data-demo-state="focused"] > .input { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+[data-demo-state="focused"] .caret { display: block; animation: blink 1s steps(1) infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.target { display: block; }
+.target.inline { display: inline-flex; }
+.dropdown {
+  display: block; position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 20;
+  background: var(--surface); box-shadow: var(--shadow); padding: 4px 0;
+}
+.row { display: flex; align-items: center; gap: 12px; padding: 6px 12px; min-height: 32px; }
+.bin { margin-left: auto; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.bin.hit { color: var(--accent); }
+.chip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 6px 0 4px; background: var(--chip-bg); color: var(--text-primary); }
+.chip .mi { color: var(--text-secondary); }
+.chip-wrap { align-self: flex-start; }
+
+/* ── примитивы движка: те же правила, что в onboarding.css — не менять ── */
+.appear { position: relative; }
+.dropdown.appear { position: absolute; }
+.appear[data-phase="entering"] { animation: onb-enter 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.appear[data-phase="exiting"] { animation: onb-exit 200ms cubic-bezier(0.7, 0, 0.84, 0) both; }
+@keyframes onb-enter { from { opacity: 0; transform: translate3d(0, -4px, 0); } to { opacity: 1; transform: none; } }
+@keyframes onb-exit { from { opacity: 1; } to { opacity: 0; } }
+.appear[data-kind="result"][data-phase="entering"]::after {
+  content: ""; position: absolute; inset: 0; background: var(--accent-tint);
+  mix-blend-mode: multiply; pointer-events: none;
+  animation: onb-highlight 1200ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+}
+@keyframes onb-highlight { from { opacity: 1; } to { opacity: 0; } }
+.pop { background-color: transparent; transition: background-color 200ms; }
+.pop[data-row-state="hovered"] { background-color: var(--row-hover); }
+.pop[data-row-state="pressed"] { background-color: var(--row-pressed); }
+.pop[data-pop] { animation: onb-pop 450ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+@keyframes onb-pop { 0% { transform: scale(1); } 40% { transform: scale(1.02); } 100% { transform: scale(1); } }
+.cursor, .ripple {
+  position: absolute; top: 0; left: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px;
+  border-radius: 50%; background: var(--cursor); pointer-events: none; transform-origin: center;
+}
+.cursor { z-index: 200; opacity: 0.8; border: 2px solid var(--surface); }
+.ripple { z-index: 199; opacity: 0; }
+
+.note { margin-top: 24px; color: var(--text-secondary); font-size: 13px; line-height: 19px; max-width: 64ch; }
+@media (max-width: 480px) { .form { padding: 16px; min-height: 400px; } .bubble { left: -4px; } }
+@media (prefers-reduced-motion: reduce) {
+  .appear, .pop, .bubble { animation: none !important; }
+  [data-demo-state="focused"] .caret { animation: none; }
+}
+</style>
+</head>
+<body>
+<main class="page">
+  <!-- МЕНЯТЬ: заголовок и подзаголовок страницы -->
+  <h1>Найдите получателя по БИН</h1>
+  <p class="lead">Наведите курсор на знак «i» у поля «Получатели» — откроется подсказка со сценой</p>
+
+  <!-- МЕНЯТЬ: кусок экрана, у элемента которого стоит «i» -->
+  <section class="form" aria-label="Фрагмент формы документа">
+    <div class="form-label">
+      <span>Получатели</span><span class="req">*</span>
+      <span class="info" id="info" tabindex="0" aria-label="Что нового" aria-describedby="bubble">
+        <span class="mi" aria-hidden="true">info</span>
+        <span class="bubble" id="bubble" role="tooltip" hidden>
+          <span class="scene" aria-hidden="true">
+            <span class="canvas" id="canvas">
+              <!-- МЕНЯТЬ: миниатюра интерфейса. Цели шагов — data-scene-target -->
+              <span class="plane">
+                <span class="field">
+                  <span class="lbl">Тема</span>
+                  <span class="input">Договор поставки</span>
+                </span>
+                <span class="field">
+                  <span class="lbl">Получатели <span class="req">*</span></span>
+                  <span class="target" data-scene-target="recipients">
+                    <span class="input"><span id="value"></span><span class="caret"></span><span class="ph" id="ph">Название, БИН или ИИН</span></span>
+                  </span>
+                  <span class="dropdown appear" id="dropdown"></span>
+                </span>
+                <span class="appear chip-wrap" data-kind="result" id="chip">
+                  <span class="chip">
+                    <span class="mi" aria-hidden="true">drag_indicator</span>
+                    <span id="chipText"></span>
+                    <span class="mi" aria-hidden="true">close</span>
+                  </span>
+                </span>
+              </span>
+              <span class="ripple" id="ripple"></span>
+              <span class="cursor" id="cursor"></span>
+            </span>
+          </span>
+          <!-- МЕНЯТЬ: заголовок — что за фича, глаголом; текст — зачем, без точки в конце -->
+          <span class="tip-text">
+            <span class="tip-title">Найдите получателя по БИН</span>
+            <span class="tip-desc">Начните вводить БИН в поле — компания найдётся, даже если вы не помните её точного названия</span>
+          </span>
+        </span>
+      </span>
+    </div>
+    <div class="form-input">Название, БИН или ИИН</div>
+  </section>
+
+  <p class="note">Превью для обсуждения. Такт, кривые и отклик на нажатие взяты один в один из движка онбординг-сцен, компоненты и цвета нарисованы приближённо. Финальный вид — в полигоне Square, где сцена собрана из настоящих компонентов</p>
+</main>
+
+<script>
+/* ── числа motion.ts — не менять ───────────────────────────────── */
+const BEAT = { leadIn: 600, move: 600, hover: 200, press: 100, release: 450, dwell: 800,
+  typeFocus: 150, typeChar: 100, typeSettle: 400, react: 400, hold: 1800,
+  fadeOut: 300, fadeIn: 300, loopGap: 400 };
+const APPEAR = { enter: 300, exit: 200 };
+const FEEDBACK = { drop: 400, dropScale: 2, dropOpacity: 0.35 };
+const SCENE = { scale: 0.75, cursorStart: { x: 400, y: 260 }, cursorPress: 0.85 };
+const LIMITS = { loop: 8000, actions: 5, typeChars: 12 };
+const OPEN_DELAY = 250;
+const EASE = { enter: [0.16, 1, 0.3, 1], exit: [0.7, 0, 0.84, 0], move: [0.65, 0, 0.35, 1] };
+const cssEase = (n) => `cubic-bezier(${EASE[n].join(', ')})`;
+function ease(name, t) {
+  const [x1, y1, x2, y2] = EASE[name];
+  if (t <= 0) return 0; if (t >= 1) return 1;
+  const bez = (a, b, s) => 3 * a * s * (1 - s) ** 2 + 3 * b * s ** 2 * (1 - s) + s ** 3;
+  let lo = 0, hi = 1, s = t;
+  for (let i = 0; i < 24; i++) { s = (lo + hi) / 2; if (bez(x1, x2, s) < t) lo = s; else hi = s; }
+  return bez(y1, y2, s);
+}
+
+/* ── МЕНЯТЬ: данные и сценарий. Шаги — click, type, point, react, без длительностей ── */
+const COMPANIES = [
+  { id: 'nur', name: 'ТОО «Нур Логистик»', bin: '180540003217' },
+  { id: 'astana-trade', name: 'ТОО «Астана Трейд»', bin: '180240012345' },
+  { id: 'dala', name: 'АО «Дала Инвест»', bin: '120340005581' },
+];
+const PICK = COMPANIES[1];
+const QUERY = '180240';
+const story = {
+  initial: { open: false, query: '', chip: false },
+  beats: [
+    { kind: 'click', target: 'recipients', apply: (s) => ({ ...s, open: true }) },
+    { kind: 'type', target: 'recipients', text: QUERY, apply: (s, query) => ({ ...s, query }) },
+    { kind: 'click', target: 'pick', apply: (s) => ({ ...s, open: false, query: '', chip: true }) },
+  ],
+};
+
+/* ── компилятор: порт story.ts — не менять ─────────────────────── */
+function compile(story) {
+  const moves = [], hots = [], focuses = [], events = [], problems = [];
+  let t = BEAT.leadIn, openFocus = null, actions = 0;
+  const closeFocus = (at) => { if (openFocus) focuses.push({ ...openFocus, end: at }); openFocus = null; };
+  for (const b of story.beats) {
+    if (b.kind === 'click') {
+      actions++;
+      moves.push({ start: t, end: t + BEAT.move, target: b.target }); t += BEAT.move;
+      hots.push({ start: t, end: t + BEAT.hover, target: b.target, state: 'hovered' }); t += BEAT.hover;
+      closeFocus(t);
+      hots.push({ start: t, end: t + BEAT.press, target: b.target, state: 'pressed' }); t += BEAT.press;
+      if (b.apply) events.push({ at: t, apply: b.apply });
+      hots.push({ start: t, end: t + BEAT.release, target: b.target, state: 'released' }); t += BEAT.release;
+    } else if (b.kind === 'point') {
+      actions++;
+      moves.push({ start: t, end: t + BEAT.move, target: b.target }); t += BEAT.move;
+      hots.push({ start: t, end: t + BEAT.dwell, target: b.target, state: 'hovered' }); t += BEAT.dwell;
+    } else if (b.kind === 'type') {
+      actions++;
+      if (b.text.length > LIMITS.typeChars) problems.push(`Печать «${b.text}» длиннее ${LIMITS.typeChars} символов`);
+      closeFocus(t); openFocus = { start: t, target: b.target }; t += BEAT.typeFocus;
+      for (let i = 1; i <= b.text.length; i++) {
+        const typed = b.text.slice(0, i);
+        events.push({ at: t, apply: (s) => b.apply(s, typed) }); t += BEAT.typeChar;
+      }
+      t += BEAT.typeSettle;
+    } else if (b.kind === 'react') {
+      events.push({ at: t, apply: b.apply }); t += BEAT.react;
+    }
+  }
+  t += BEAT.hold; closeFocus(t);
+  if (actions > LIMITS.actions) problems.push(`Действий ${actions}, потолок ${LIMITS.actions}`);
+  if (t > LIMITS.loop) problems.push(`Цикл ${(t / 1000).toFixed(1)} с, потолок ${LIMITS.loop / 1000} с`);
+  if (problems.length) console.warn('[onboarding] сцена за потолками:', problems.join('; '));
+  return { moves, hots, focuses, events, total: t, loop: t + BEAT.fadeOut + BEAT.fadeIn + BEAT.loopGap };
+}
+const timeline = compile(story);
+const stepAt = (t) => { let n = 0; while (n < timeline.events.length && timeline.events[n].at <= t) n++; return n; };
+const stateAt = (step) => { let s = story.initial; for (let i = 0; i < step; i++) s = timeline.events[i].apply(s); return s; };
+
+/* ── SceneAppear: появление со сдвигом, уход короче прихода — не менять ── */
+function appear(el) {
+  let phase = 'hidden', timer;
+  el.hidden = true;
+  return (show, animate) => {
+    if (!animate) { clearTimeout(timer); phase = show ? 'shown' : 'hidden'; el.hidden = !show; el.dataset.phase = phase; return; }
+    if (show) {
+      if (phase === 'shown' || phase === 'entering') return;
+      clearTimeout(timer); el.hidden = false; el.dataset.phase = '';
+      void el.offsetWidth; phase = 'entering'; el.dataset.phase = 'entering';
+    } else {
+      if (phase === 'hidden' || phase === 'exiting') return;
+      phase = 'exiting'; el.dataset.phase = 'exiting';
+      timer = setTimeout(() => { phase = 'hidden'; el.hidden = true; }, APPEAR.exit);
+    }
+  };
+}
+
+/* ── МЕНЯТЬ: разметка, которую строит скрипт, и render(state) ───────── */
+const $ = (id) => document.getElementById(id);
+const canvas = $('canvas'), cursor = $('cursor'), ripple = $('ripple');
+const dropdown = $('dropdown');
+$('chipText').textContent = `${PICK.name}, БИН ${PICK.bin}`;
+
+const rows = COMPANIES.map((c) => {
+  const wrap = document.createElement('span');
+  wrap.className = 'appear'; wrap.style.display = 'block';
+  const target = c.id === PICK.id ? 'pick' : c.id;
+  wrap.innerHTML = `<span class="pop" style="display:block"><span class="row">
+    <span class="target inline" data-scene-target="${target}">${c.name}</span>
+    <span class="bin">${c.bin}</span></span></span>`;
+  dropdown.appendChild(wrap);
+  return { c, wrap, pop: wrap.firstElementChild, bin: wrap.querySelector('.bin'), target };
+});
+const showDropdown = appear(dropdown);
+const showChip = appear($('chip'));
+const showRows = rows.map((r) => appear(r.wrap));
+
+function render(state, hot, focus, animate) {
+  $('value').textContent = state.query;
+  $('ph').hidden = !!state.query;
+  showDropdown(state.open, animate);
+  rows.forEach((r, i) => {
+    showRows[i](r.c.bin.includes(state.query), animate);
+    r.bin.classList.toggle('hit', !!state.query);
+    // Строка списка — как строка Table в ДС: подсветка под курсором и при нажатии, отклик после.
+    const inRow = hot && hot.target === r.target;
+    r.pop.dataset.rowState = inRow ? (hot.state === 'pressed' ? 'pressed' : 'hovered') : '';
+    if (inRow && hot.state === 'released') r.pop.setAttribute('data-pop', '');
+    else r.pop.removeAttribute('data-pop');
+  });
+  showChip(state.chip, animate);
+  // Цели под курсором — hovered / pressed / focused, как у компонентов ДС.
+  canvas.querySelectorAll('[data-scene-target]').forEach((node) => {
+    const id = node.dataset.sceneTarget;
+    const s = hot && hot.target === id ? (hot.state === 'released' ? 'hovered' : hot.state)
+      : focus === id ? 'focused' : '';
+    if (s) node.dataset.demoState = s; else delete node.dataset.demoState;
+  });
+}
+
+/* ── часы: порт runClock — не менять. Стартуют при открытии подсказки ── */
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+let frame = 0, running = false, onVisibility = null;
+
+function stopClock() {
+  running = false;
+  cancelAnimationFrame(frame);
+  if (onVisibility) document.removeEventListener('visibilitychange', onVisibility);
+  onVisibility = null;
+}
+
+function startClock() {
+  stopClock();
+  if (reduced) {
+    render(stateAt(timeline.events.length), null, null, false);
+    cursor.hidden = true; ripple.hidden = true;
+    return;
+  }
+  render(story.initial, null, null, false);
+  canvas.style.transition = 'none'; canvas.style.opacity = '1';
+  running = true;
+  let elapsed = 0, last = performance.now(), loopIndex = -1;
+  let resolved = [], origins = [], prev = '', prevPhase = 'play', dropAt = null;
+
+  const measure = (target) => {
+    const node = canvas.querySelector(`[data-scene-target="${target}"]`);
+    if (!node) return null;
+    const c = canvas.getBoundingClientRect(), r = node.getBoundingClientRect();
+    return { x: (r.left + r.width / 2 - c.left) / SCENE.scale, y: (r.top + r.height / 2 - c.top) / SCENE.scale };
+  };
+
+  const tick = (now) => {
+    if (!running) return;
+    elapsed += Math.min(now - last, 100); last = now;
+    const index = Math.floor(elapsed / timeline.loop);
+    const t = elapsed - index * timeline.loop;
+    if (index !== loopIndex) { loopIndex = index; resolved = []; origins = []; }
+    const resetAt = timeline.total + BEAT.fadeOut;
+    const playing = t < timeline.total;
+    const step = t < resetAt ? stepAt(t) : 0;
+    const phase = playing ? 'play' : t < resetAt ? 'out' : 'in';
+    const hot = playing ? timeline.hots.find((h) => h.start <= t && t < h.end) : undefined;
+    const focus = playing ? timeline.focuses.find((f) => f.start <= t && t < f.end) : undefined;
+
+    if (phase !== prevPhase) {
+      canvas.style.transition = phase === 'out'
+        ? `opacity ${BEAT.fadeOut}ms ${cssEase('exit')}` : `opacity ${BEAT.fadeIn}ms ${cssEase('enter')}`;
+      canvas.style.opacity = phase === 'out' ? '0' : '1';
+      prevPhase = phase;
+    }
+    const key = `${step}|${hot ? hot.target + ':' + hot.state : ''}|${focus ? focus.target : ''}|${phase}`;
+    if (key !== prev) { render(stateAt(step), hot || null, focus ? focus.target : null, phase === 'play'); prev = key; }
+
+    let pos = { ...SCENE.cursorStart };
+    if (t < resetAt) {
+      timeline.moves.forEach((m, i) => {
+        if (m.start > t) return;
+        if (resolved[i] === undefined) { origins[i] = pos; resolved[i] = measure(m.target); }
+        const to = resolved[i] || origins[i];
+        const k = ease('move', (t - m.start) / (m.end - m.start));
+        pos = { x: origins[i].x + (to.x - origins[i].x) * k, y: origins[i].y + (to.y - origins[i].y) * k };
+      });
+    }
+    const pressed = hot && hot.state === 'pressed';
+    cursor.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${pressed ? SCENE.cursorPress : 1})`;
+
+    // Круг нажатия: от точки нажатия, плотный, с чётким краем, быстро гаснет.
+    const drop = playing ? timeline.hots.find((h) => h.state === 'pressed' && h.start <= t && t < h.start + FEEDBACK.drop) : undefined;
+    if (drop && (!dropAt || dropAt.start !== drop.start)) dropAt = { start: drop.start, ...pos };
+    if (drop && dropAt) {
+      const p = (t - drop.start) / FEEDBACK.drop;
+      ripple.style.transform = `translate(${dropAt.x}px, ${dropAt.y}px) scale(${1 + (FEEDBACK.dropScale - 1) * ease('enter', p)})`;
+      ripple.style.opacity = String(FEEDBACK.dropOpacity * (1 - ease('move', p)));
+    } else ripple.style.opacity = '0';
+
+    frame = requestAnimationFrame(tick);
+  };
+  onVisibility = () => {
+    if (document.hidden) cancelAnimationFrame(frame);
+    else if (running) { last = performance.now(); frame = requestAnimationFrame(tick); }
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  frame = requestAnimationFrame(tick);
+}
+
+/* ── подсказка: открыть по наведению через 250 мс, закрыть сразу; на телефоне — по нажатию ── */
+const info = $('info'), bubble = $('bubble');
+let openTimer = 0;
+function openTip() { clearTimeout(openTimer); if (!bubble.hidden) return; bubble.hidden = false; startClock(); }
+function closeTip() { clearTimeout(openTimer); bubble.hidden = true; stopClock(); }
+info.addEventListener('pointerenter', (e) => {
+  if (e.pointerType === 'touch') return;
+  clearTimeout(openTimer); openTimer = setTimeout(openTip, OPEN_DELAY);
+});
+info.addEventListener('pointerleave', (e) => { if (e.pointerType !== 'touch') closeTip(); });
+// Касание: нажатие открывает и закрывает. Мышь сюда не попадает — у неё наведение.
+let lastPointer = 'mouse';
+info.addEventListener('pointerdown', (e) => { lastPointer = e.pointerType; });
+info.addEventListener('click', (e) => {
+  if (lastPointer !== 'touch' || bubble.contains(e.target)) return;
+  if (bubble.hidden) openTip(); else closeTip();
+});
+// Клавиатура: фокус на «i» открывает сразу, уход фокуса закрывает.
+info.addEventListener('keyup', (e) => { if (e.key === 'Tab') openTip(); });
+info.addEventListener('blur', closeTip);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeTip(); });
+</script>
+</body>
+</html>

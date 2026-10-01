@@ -4,7 +4,14 @@ import { Button } from '@/components/square/Button'
 import { Checkbox } from '@/components/square/Checkbox'
 import { Dropdown } from '@/components/square/Dropdown'
 import { Icon } from '@/components/square/Icon'
-import { OnboardingScene, SceneAppear, SceneTarget, click, defineStory } from '@/shared/onboarding'
+import {
+  OnboardingScene,
+  SceneAppear,
+  ScenePlane,
+  SceneTarget,
+  click,
+  defineStory,
+} from '@/shared/onboarding'
 import { FOLDERS, MOVED, RESULT, SCENE_DOCS, TARGET_FOLDER } from './folder-move.data'
 
 interface State {
@@ -31,7 +38,7 @@ export function FolderMoveScene() {
   return (
     <OnboardingScene story={story}>
       {(s) => (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--gap-04)' }}>
+        <ScenePlane>
           <ActionBar case="documentList" style={{ padding: 0 }}>
             <ActionBarActionButtons>
               <Button color="onColor" priority="primary" size="extraSmall">
@@ -69,13 +76,8 @@ export function FolderMoveScene() {
             </ActionBarActionButtons>
           </ActionBar>
 
-          {/* Плоскость списка — как таблица папки: белая, поле paddings/06. */}
-          <div
-            style={{
-              padding: 'var(--paddings-06)',
-              background: 'var(--colors-surface-onColor-neutral-primary)',
-            }}
-          >
+          {/* Список папки — на той же белой плоскости, что и панель: окошко без рамки. */}
+          <div>
             {SCENE_DOCS.map((doc) => (
               <SceneAppear
                 key={doc.id}
@@ -109,7 +111,7 @@ export function FolderMoveScene() {
           <SceneAppear show={s.moved} kind="result">
             <Alert type="success" labelValue={RESULT} />
           </SceneAppear>
-        </div>
+        </ScenePlane>
       )}
     </OnboardingScene>
   )
