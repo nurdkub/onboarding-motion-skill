@@ -84,7 +84,8 @@ body {
 }
 
 /* ── знак «i» и подсказка ───────────────────────────────────── */
-.info { position: relative; display: inline-flex; color: var(--text-secondary); cursor: help; }
+/* Курсор обычный: нажатие на «i» ничего не делает, подсказка открывается по наведению (правило ДС «курсор отвечает на вопрос, что будет, если нажать»). */
+.info { position: relative; display: inline-flex; color: var(--text-secondary); cursor: default; }
 .info:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .bubble {
   position: absolute; top: calc(100% + 8px); left: -8px; z-index: 50;
