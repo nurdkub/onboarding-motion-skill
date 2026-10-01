@@ -1,6 +1,6 @@
 ---
 name: onboarding-motion
-description: "Анимированный онбординг фич на дизайн-системе Square (Documentolog, d8n): подсказка с живой сценой, как в Telegram, — курсор сам показывает новое действие на миниатюре интерфейса. Use when asked to show a new feature or important update with an animation, onboarding hint, feature tip, feature discovery, product tour, 'анимация в подсказке', 'покажи анимацией', 'онбординг', 'как в Телеграме', or when editing code built with OnboardingScene / OnboardingTip / defineStory. Do not use for ordinary overlay appearance or loading states."
+description: "Онбординг фич живой сценой в подсказке, как в Telegram, на дизайн-системе Square. Use for feature tips, onboarding hints, «анимация в подсказке», OnboardingScene, OnboardingTip"
 ---
 
 # onboarding-motion
