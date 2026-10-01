@@ -1,0 +1,262 @@
+/*
+ * Onboarding — сцена и подсказка с сценой.
+ *
+ * Длительностей и кривых в этом файле нет: они приходят переменными
+ * `--onb-*` из motion.ts (ставит OnboardingScene). Цвета, поля и зазоры —
+ * mapped-токены. Литералы — только тень (токенов теней в Figma нет,
+ * взята тень `Modal`) и числа геометрии холста.
+ */
+
+/* ── сцена ─────────────────────────────────────────────────────────────── */
+
+.OnbScene {
+  position: relative;
+  overflow: hidden;
+  background: var(--colors-background-neutral-subtle-1);
+}
+
+.OnbScene__canvas {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  transform-origin: 0 0;
+  box-sizing: border-box;
+  padding: var(--paddings-07);
+  overflow: hidden;
+}
+
+/* Белая плоскость — экран в миниатюре. Поле плоскости — paddings/08. */
+.OnbScene__plane {
+  box-sizing: border-box;
+  block-size: 100%;
+  padding: var(--paddings-08);
+  background: var(--colors-surface-onColor-neutral-primary);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-06);
+}
+
+.OnbScene__target {
+  display: block;
+}
+
+.OnbScene__target[data-inline] {
+  display: inline-flex;
+}
+
+.OnbScene__cursor {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 200;
+  /* Кружок 20 px холста (15 на экране), центр — в точке (x, y). */
+  inline-size: 20px;
+  block-size: 20px;
+  margin-block-start: -10px;
+  margin-inline-start: -10px;
+  box-sizing: border-box;
+  /* Не токен: `borderRadius/pill` в теме business равен нулю (там скруглений
+     нет), а знак сцены круглый в любой теме — это графика, как у Logo. */
+  border-radius: 50%;
+  background: var(--colors-icon-neutral-tertiaryHovered);
+  /* Белая обводка отделяет кружок от любого фона под ним. */
+  border: var(--borderWidth-hovered) solid var(--colors-surface-onColor-neutral-primary);
+  opacity: 0.8;
+  transform-origin: center;
+  pointer-events: none;
+}
+
+/* Капля при нажатии: размер и цвет курсора, масштаб и прозрачность ведут
+   часы сцены (FEEDBACK в motion.ts). Под курсором, над содержимым. */
+.OnbScene__ripple {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 199;
+  inline-size: 20px;
+  block-size: 20px;
+  margin-block-start: -10px;
+  margin-inline-start: -10px;
+  box-sizing: border-box;
+  border-radius: 50%;
+  opacity: 0;
+  transform-origin: center;
+  pointer-events: none;
+  /* Круг нажатия: цвет курсора, чёткий край (FEEDBACK.drop в motion.ts). */
+  background: var(--colors-icon-neutral-tertiaryHovered);
+}
+
+/* Отклик строки: подрастает и возвращается. Атрибут появляется на такт
+   `release` — анимация запускается заново при каждом нажатии. */
+@keyframes onb-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(var(--onb-pop-scale));
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Обёртка строки несёт подсветку — подрастает строка вместе с фоном.
+   Цвета и длительность — как у строки `Table` в ДС. Постоянного фона
+   у отмеченной строки нет: в ДС его нет тоже. */
+.OnbScene__pop {
+  background-color: transparent;
+  transition: background-color var(--onb-row-duration);
+}
+
+.OnbScene__pop[data-row-state="hovered"] {
+  background-color: var(--colors-surface-neutral-tertiary);
+}
+
+.OnbScene__pop[data-row-state="pressed"] {
+  background-color: var(--colors-surface-neutral-tertiaryPressed);
+}
+
+/* Кривая `move` действует на каждом отрезке кадров: и рост, и возврат плавные. */
+.OnbScene__pop[data-pop] {
+  animation: onb-pop var(--onb-pop-duration) var(--onb-ease-move) both;
+}
+
+/* ── появление элементов ───────────────────────────────────────────────── */
+
+@keyframes onb-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, calc(-1 * var(--onb-offset)), 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes onb-exit {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes onb-highlight {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+.OnbScene__appear {
+  position: relative;
+}
+
+.OnbScene__appear[data-phase="entering"] {
+  animation: onb-enter var(--onb-enter-duration) var(--onb-ease-enter) both;
+}
+
+.OnbScene__appear[data-phase="exiting"] {
+  animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
+}
+
+/* Подсветка результата: акцентная заливка поверх, режим multiply — белое
+   становится акцентным тоном, текст остаётся читаемым. Вспыхивает сразу
+   и гаснет по кривой появления. */
+.OnbScene__appear[data-kind="result"][data-phase="entering"]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--colors-surface-accent-secondaryPressed);
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  animation: onb-highlight var(--onb-highlight-duration) var(--onb-ease-enter)
+    var(--onb-enter-duration) both;
+}
+
+/* ── окно в сцене ──────────────────────────────────────────────────────── */
+
+/* Blackout ДС стоит fixed на весь вьюпорт — в сцене он в границах холста. */
+.OnbScene__blackout {
+  position: absolute;
+  z-index: 100;
+}
+
+.OnbScene__blackout[data-phase="exiting"] {
+  animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
+}
+
+.OnbScene__window {
+  max-block-size: calc(100% - 2 * var(--paddings-07));
+}
+
+/* ── ошибки сценария (только дев-сервер) ───────────────────────────────── */
+
+.OnbScene__problems {
+  position: absolute;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-03);
+  padding: var(--paddings-07);
+  background: var(--colors-surface-onColor-neutral-primary);
+  color: var(--colors-text-error-primary);
+  font: 12px/1.4 system-ui, sans-serif;
+}
+
+/* ── подсказка со сценой ───────────────────────────────────────────────── */
+
+.OnbTip {
+  position: relative;
+  display: inline-flex;
+}
+
+.OnbTip__bubble {
+  position: absolute;
+  z-index: 50;
+  inset-inline-start: 0;
+  inline-size: 360px;
+  display: flex;
+  flex-direction: column;
+  background: var(--colors-surface-onColor-neutral-primary);
+  box-shadow:
+    0 0 4px 1px rgb(26 26 26 / 4%),
+    0 0 48px rgb(26 26 26 / 12%);
+  cursor: default;
+}
+
+.OnbTip__bubble[data-side="bottom"] {
+  inset-block-start: calc(100% + var(--gap-05));
+}
+
+.OnbTip__bubble[data-side="top"] {
+  inset-block-end: calc(100% + var(--gap-05));
+}
+
+.OnbTip__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-02);
+  padding: var(--paddings-07);
+}
+
+.OnbTip__title {
+  color: var(--colors-text-neutral-primary);
+}
+
+.OnbTip__description {
+  color: var(--colors-text-neutral-secondary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .OnbScene__appear,
+  .OnbScene__pop,
+  .OnbScene__blackout {
+    animation: none !important;
+  }
+}

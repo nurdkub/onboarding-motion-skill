@@ -1,0 +1,8 @@
+{
+  "name": "onboarding-motion",
+  "displayName": "Onboarding motion (Square)",
+  "version": "1.0.0",
+  "description": "Онбординг фич живой сценой в подсказке: сценарий из действий пользователя, такт, кривые и отклик на нажатие зашиты в движок",
+  "author": { "name": "nurdkub" },
+  "keywords": ["onboarding", "animation", "tooltip", "feature-discovery", "square", "design-system"]
+}

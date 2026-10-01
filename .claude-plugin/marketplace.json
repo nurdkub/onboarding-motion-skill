@@ -1,0 +1,13 @@
+{
+  "name": "square-onboarding",
+  "owner": { "name": "nurdkub" },
+  "description": "Онбординг фич живой сценой на дизайн-системе Square",
+  "plugins": [
+    {
+      "name": "onboarding-motion",
+      "source": "./",
+      "description": "Подсказка с анимированной сценой, как в Telegram: автор пишет сценарий, такт и кривые задаёт движок",
+      "version": "1.0.0"
+    }
+  ]
+}
