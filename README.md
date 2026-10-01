@@ -9,13 +9,12 @@
 
 ## Как поставить за минуту
 
-1. **Скачайте архив:** [onboarding-motion.zip](https://github.com/nurdkub/onboarding-motion-skill/releases/latest/download/onboarding-motion.zip).
-   Распаковывать не нужно. Скачивайте именно по этой ссылке, а не кнопкой
-   **Code → Download ZIP**: тот архив — весь репозиторий, Claude его не примет.
+1. **Скачайте архив:** зелёная кнопка **Code** вверху страницы → **Download ZIP**.
+   Распаковывать не нужно.
 2. **Откройте Claude** (сайт claude.ai или приложение) → **Настройки** → **Capabilities** →
    раздел **Skills** → **Upload skill**.
-3. **Выберите скачанный архив.** Скилл `onboarding-motion` появится в списке — проверьте,
-   что переключатель рядом с ним включён.
+3. **Выберите скачанный архив** `onboarding-motion-skill-main.zip`. Скилл `onboarding-motion`
+   появится в списке — проверьте, что переключатель рядом с ним включён.
 
 Готово. Попросите Claude, например: «Сделай онбординг-подсказку со сценой для кнопки
 „Папка“: отметить два документа, выбрать папку, документы переносятся». Claude сам возьмёт
@@ -23,57 +22,54 @@
 
 Новая версия выходит — скачайте архив заново и загрузите его так же, поверх старого.
 
+## Что писать Claude
+
+```
+Сделай онбординг-подсказку со сценой.
+
+Где: [экран и элемент, у которого стоит знак «i»]
+Фича: [что новое, одной фразой]
+Что делает человек: [2–4 шага по порядку]
+Чем кончается: [что видно на экране в конце]
+Заголовок: [что за фича, глаголом]
+Текст: [зачем она, одно-два предложения]
+```
+
+Секунды, скорость и кривые не пишите — такт один на все сцены, его задаёт движок. Одна
+сцена — одна фича: вторую фичу показывают второй подсказкой.
+
 ## Что внутри
 
 ```
-.claude-plugin/
-  marketplace.json      маркетплейс из одного плагина — для установки из GitHub
-  plugin.json           манифест плагина
-skills/onboarding-motion/
-  SKILL.md              правила, порядок сборки сцены, чек-лист, установка движка
-  references/
-    timing.md           такт, кривые, отклик на нажатие — таблица для фронт-команды
-    storyboard.md       как выбрать сюжет и разложить на шаги, анти-паттерны
-    research.md         выжимка гайдов Material, Apple, NN/g, Appcues, WCAG и референсы
-  assets/
-    engine/             движок: motion.ts, story.ts, OnboardingScene.tsx, OnboardingTip.tsx, onboarding.css, index.ts
-    examples/           две готовые сцены: выбор получателя по DG Name и перенос документов в папку
+SKILL.md                правила, порядок сборки сцены, чек-лист, установка движка
+references/
+  timing.md             такт, кривые, отклик на нажатие — таблица для фронт-команды
+  storyboard.md         как выбрать сюжет и разложить на шаги, анти-паттерны
+  research.md           выжимка гайдов Material, Apple, NN/g, Appcues, WCAG и референсы
+assets/
+  engine/               движок: motion.ts, story.ts, OnboardingScene.tsx, OnboardingTip.tsx, onboarding.css, index.ts
+  examples/             две готовые сцены: выбор получателя по DG Name и перенос документов в папку
 ```
 
-## Для Claude Code: установка из GitHub
+## Для Claude Code
 
-В сеансе Claude Code:
-
-```
-/plugin marketplace add <владелец>/<репозиторий>
-/plugin install onboarding-motion@square-onboarding
-```
-
-Или из терминала:
-
-```bash
-claude plugin marketplace add <владелец>/<репозиторий>
-claude plugin install onboarding-motion@square-onboarding
-```
-
-Репозиторий приватный — у того, кто ставит, должен быть к нему доступ (`gh auth login`).
-Обновление: `/plugin marketplace update square-onboarding`, затем переустановка плагина.
-
-## Установка без маркетплейса
-
-Скопировать папку `skills/onboarding-motion/` в одно из мест:
+Скачать архив так же и распаковать в одно из мест — под именем папки `onboarding-motion`:
 
 - `~/.claude/skills/onboarding-motion/` — для всех проектов;
 - `.claude/skills/onboarding-motion/` в корне проекта — только для него.
 
-## Что умеет скилл в claude.ai и в Claude Code
+Или одной командой:
+
+```bash
+git clone https://github.com/nurdkub/onboarding-motion-skill.git ~/.claude/skills/onboarding-motion
+```
+
+Обновление — `git pull` в этой папке.
+
+## Где сцена оживает
 
 В claude.ai и приложении Claude скилл — свод правил и образец кода: Claude по нему
 описывает сцену, пишет её код и проверяет тексты. Чтобы сцена заиграла, код запускают
-в проекте на компонентах Square, например в полигоне Square DS Prototyping.
-
-## Движок
-
-Работает в проекте на React с компонентами Square и токенами Square — подробности в разделе
-«Установка движка» в `SKILL.md`. В полигоне Square DS Prototyping движок уже лежит в
-`src/shared/onboarding/`, и источник правды — он; этот пакет — снимок на 01.10.2026.
+в проекте на React с компонентами и токенами Square, например в полигоне
+Square DS Prototyping — там движок уже лежит в `src/shared/onboarding/`. Подробности —
+в разделе «Установка движка» в `SKILL.md`.
