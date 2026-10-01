@@ -14,7 +14,7 @@ import {
   defineStory,
   type,
 } from '@/shared/onboarding'
-import { CORRESPONDENTS, PICK } from './dg-name.data'
+import { CORRESPONDENTS, PICK, TIP } from './dg-name.data'
 
 interface State {
   modal: boolean
@@ -141,3 +141,10 @@ export function RecipientScene() {
     </OnboardingScene>
   )
 }
+
+/**
+ * Объявление сцены для выгрузки в SVG (`npm run export:svg -- <слаг>`):
+ * заголовок и текст подсказки плюс сама сцена. Страница выгрузки находит
+ * сцены по этому экспорту.
+ */
+export const onboardingTip = { ...TIP, Scene: RecipientScene }

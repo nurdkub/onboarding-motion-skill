@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { flushSync } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { ModalActionBar, ModalHeader } from '@/components/square/Modal'
 import { Blackout } from '@/components/square/Blackout'
@@ -81,6 +82,8 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
   const reduced = usePrefersReducedMotion()
   const broken = import.meta.env.DEV && timeline.problems.length > 0
   const still = reduced || broken
+  // Страница выгрузки в SVG ставит флаг до монтирования — читаем его здесь, а не при загрузке модуля.
+  const [exporting] = useState(isExporting)
 
   const [step, setStep] = useState(() => (still ? timeline.events.length : 0))
   const [hot, setHot] = useState<SceneContextValue['hot']>(null)
@@ -99,17 +102,15 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
       setPhase('play')
       return
     }
-    return runClock(timeline, canvasRef, cursorRef, rippleRef, {
-      setStep,
-      setHot,
-      setFocus,
-      setPhase,
-    })
+    const setters = { setStep, setHot, setFocus, setPhase }
+    // Выгрузка в SVG ведёт время сама: часы не идут, сцена отдаёт перемотку.
+    if (exporting) return registerForExport(timeline, canvasRef, cursorRef, rippleRef, setters)
+    return runClock(timeline, canvasRef, cursorRef, rippleRef, setters)
   }, [timeline, still])
 
   const state = useMemo(() => stateAt(story, timeline, step), [story, timeline, step])
   const context = useMemo<SceneContextValue>(
-    () => ({ hot, focus, animate: !still && phase === 'play' }),
+    () => ({ hot, focus, animate: !still && !exporting && phase === 'play' }),
     [hot, focus, still, phase],
   )
 
@@ -162,22 +163,30 @@ interface Setters {
 
 type Point = { x: number; y: number }
 
-function runClock<S>(
+/**
+ * Один кадр сцены в момент t цикла: состояние, цель под курсором, фокус, фаза,
+ * курсор и круг нажатия. Его зовут и живые часы, и перемотка выгрузки в SVG —
+ * поэтому SVG проигрывает ровно то же, что сцена в продукте.
+ */
+export interface FrameInfo {
+  pos: Point
+  pressed: boolean
+  drop: { x: number; y: number; scale: number; opacity: number } | null
+}
+
+function createFrame<S>(
   timeline: Timeline<S>,
   canvasRef: React.RefObject<HTMLDivElement | null>,
   cursorRef: React.RefObject<HTMLDivElement | null>,
   rippleRef: React.RefObject<HTMLDivElement | null>,
   set: Setters,
 ) {
-  let elapsed = 0
-  let last = performance.now()
-  let frame = 0
-  let loopIndex = -1
   /** Куда ведёт каждый путь курсора в этом цикле. Меряется один раз, при старте пути. */
   let resolved: (Point | null)[] = []
   let origins: Point[] = []
   let prev = { step: -1, hot: '', focus: '', phase: '' }
   let dropAt: { start: number; x: number; y: number } | null = null
+  let lastT = Infinity
 
   const measure = (target: string): Point | null => {
     const canvas = canvasRef.current
@@ -194,19 +203,13 @@ function runClock<S>(
     }
   }
 
-  const tick = (now: number) => {
-    // Шаг кадра ограничен: после скрытой вкладки или подвисания сцена
-    // продолжает с места, а не прыгает вперёд.
-    elapsed += Math.min(now - last, 100)
-    last = now
-
-    const index = Math.floor(elapsed / timeline.loop)
-    const t = elapsed - index * timeline.loop
-    if (index !== loopIndex) {
-      loopIndex = index
+  return (t: number): FrameInfo => {
+    // Новый цикл (или перемотка назад) — пути курсора меряются заново.
+    if (t < lastT) {
       resolved = []
       origins = []
     }
+    lastT = t
 
     const resetAt = timeline.total + BEAT.fadeOut
     const playing = t < timeline.total
@@ -243,28 +246,56 @@ function runClock<S>(
       cursorRef.current.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${pressed ? SCENE.cursorPress : 1})`
     }
 
-    // Капля: от начала нажатия круг мягко расходится и гаснет. Она длиннее
-    // такта нажатия, поэтому центр — точка нажатия, запомненная один раз,
-    // а не текущая точка курсора, который к концу капли уже в пути.
-    const drop = playing
+    // Круг нажатия: от начала нажатия расходится и гаснет. Он длиннее такта
+    // нажатия, поэтому центр — точка нажатия, запомненная один раз, а не
+    // текущая точка курсора, который к концу круга уже в пути.
+    const press = playing
       ? timeline.hots.find(
           (h) => h.state === 'pressed' && h.start <= t && t < h.start + FEEDBACK.drop,
         )
       : undefined
-    if (drop && dropAt?.start !== drop.start) dropAt = { start: drop.start, ...pos }
+    if (press && dropAt?.start !== press.start) dropAt = { start: press.start, ...pos }
+    let drop: FrameInfo['drop'] = null
+    if (press && dropAt) {
+      const p = (t - press.start) / FEEDBACK.drop
+      // Гаснет по `move`: заметен в начале, без резкого обрыва в конце.
+      drop = {
+        x: dropAt.x,
+        y: dropAt.y,
+        scale: 1 + (FEEDBACK.dropScale - 1) * ease('enter', p),
+        opacity: FEEDBACK.dropOpacity * (1 - ease('move', p)),
+      }
+    }
     if (rippleRef.current) {
-      if (drop && dropAt) {
-        const p = (t - drop.start) / FEEDBACK.drop
-        const scale = 1 + (FEEDBACK.dropScale - 1) * ease('enter', p)
-        // Гаснет по `move`: заметен в начале, без резкого обрыва в конце.
-        const opacity = FEEDBACK.dropOpacity * (1 - ease('move', p))
-        rippleRef.current.style.transform = `translate(${dropAt.x}px, ${dropAt.y}px) scale(${scale})`
-        rippleRef.current.style.opacity = String(opacity)
+      if (drop) {
+        rippleRef.current.style.transform = `translate(${drop.x}px, ${drop.y}px) scale(${drop.scale})`
+        rippleRef.current.style.opacity = String(drop.opacity)
       } else {
         rippleRef.current.style.opacity = '0'
       }
     }
+    return { pos, pressed, drop }
+  }
+}
 
+function runClock<S>(
+  timeline: Timeline<S>,
+  canvasRef: React.RefObject<HTMLDivElement | null>,
+  cursorRef: React.RefObject<HTMLDivElement | null>,
+  rippleRef: React.RefObject<HTMLDivElement | null>,
+  set: Setters,
+) {
+  const frameAt = createFrame(timeline, canvasRef, cursorRef, rippleRef, set)
+  let elapsed = 0
+  let last = performance.now()
+  let frame = 0
+
+  const tick = (now: number) => {
+    // Шаг кадра ограничен: после скрытой вкладки или подвисания сцена
+    // продолжает с места, а не прыгает вперёд.
+    elapsed += Math.min(now - last, 100)
+    last = now
+    frameAt(elapsed % timeline.loop)
     frame = requestAnimationFrame(tick)
   }
 
@@ -282,6 +313,50 @@ function runClock<S>(
   return () => {
     cancelAnimationFrame(frame)
     document.removeEventListener('visibilitychange', onVisibility)
+  }
+}
+
+/* ── выгрузка в SVG ────────────────────────────────────────────────────────
+ * Страница выгрузки ставит `window.__ONB_EXPORT__ = true` до монтирования
+ * сцены. Тогда часы не идут, а сцена кладёт в `window.__onbScenes` перемотку:
+ * `seek(t)` синхронно рисует кадр в момент t (flushSync), и выгрузка снимает
+ * разметку. Код выгрузки — `svgExport.ts`.
+ */
+export interface SceneController {
+  timeline: Timeline<unknown>
+  canvas: HTMLDivElement | null
+  seek: (t: number) => FrameInfo
+}
+
+function isExporting() {
+  return Boolean((window as unknown as { __ONB_EXPORT__?: boolean }).__ONB_EXPORT__)
+}
+
+function registerForExport<S>(
+  timeline: Timeline<S>,
+  canvasRef: React.RefObject<HTMLDivElement | null>,
+  cursorRef: React.RefObject<HTMLDivElement | null>,
+  rippleRef: React.RefObject<HTMLDivElement | null>,
+  set: Setters,
+) {
+  const frameAt = createFrame(timeline, canvasRef, cursorRef, rippleRef, set)
+  const controller: SceneController = {
+    timeline: timeline as Timeline<unknown>,
+    get canvas() {
+      return canvasRef.current
+    },
+    seek: (t) => {
+      let info!: FrameInfo
+      flushSync(() => {
+        info = frameAt(t)
+      })
+      return info
+    },
+  }
+  const w = window as unknown as { __onbScenes?: SceneController[] }
+  w.__onbScenes = [...(w.__onbScenes ?? []), controller]
+  return () => {
+    w.__onbScenes = (w.__onbScenes ?? []).filter((c) => c !== controller)
   }
 }
 

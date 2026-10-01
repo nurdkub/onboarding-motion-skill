@@ -12,7 +12,7 @@ import {
   click,
   defineStory,
 } from '@/shared/onboarding'
-import { FOLDERS, MOVED, RESULT, SCENE_DOCS, TARGET_FOLDER } from './folder-move.data'
+import { FOLDERS, MOVED, RESULT, SCENE_DOCS, TARGET_FOLDER, TIP } from './folder-move.data'
 
 interface State {
   checked: string[]
@@ -118,3 +118,10 @@ export function FolderMoveScene() {
     </OnboardingScene>
   )
 }
+
+/**
+ * Объявление сцены для выгрузки в SVG (`npm run export:svg -- <слаг>`):
+ * заголовок и текст подсказки плюс сама сцена. Страница выгрузки находит
+ * сцены по этому экспорту.
+ */
+export const onboardingTip = { ...TIP, Scene: FolderMoveScene }
