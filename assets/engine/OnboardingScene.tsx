@@ -32,9 +32,15 @@ interface SceneContextValue {
   focus: string | null
   /** Ложь, пока сцена сбрасывается или движение выключено: появления без анимации. */
   animate: boolean
+  /**
+   * Время цикла при выгрузке в SVG, мс; в живой сцене — `null`. По нему
+   * `SceneAppear` и `SceneWindow` знают, когда появились или ушли, и проходят
+   * свои фазы без таймеров: выгрузка снимает их на нужных моментах.
+   */
+  clock: number | null
 }
 
-const SceneContext = createContext<SceneContextValue>({ hot: null, focus: null, animate: false })
+const SceneContext = createContext<SceneContextValue>({ hot: null, focus: null, animate: false, clock: null })
 
 /** Цели внутри строки `SceneAppear` — по ним строка узнаёт, что нажали в ней. */
 const ItemContext = createContext<Set<string> | null>(null)
@@ -79,6 +85,9 @@ export interface OnboardingSceneProps<S> {
 
 export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>) {
   const timeline = useMemo(() => compile(story), [story])
+  useEffect(() => {
+    if (import.meta.env.DEV) timeline.warnings.forEach((w) => console.warn(`[onboarding] ${w}`))
+  }, [timeline])
   const reduced = usePrefersReducedMotion()
   const broken = import.meta.env.DEV && timeline.problems.length > 0
   const still = reduced || broken
@@ -89,6 +98,7 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
   const [hot, setHot] = useState<SceneContextValue['hot']>(null)
   const [focus, setFocus] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('play')
+  const [clock, setClock] = useState<number | null>(null)
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -102,7 +112,7 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
       setPhase('play')
       return
     }
-    const setters = { setStep, setHot, setFocus, setPhase }
+    const setters = { setStep, setHot, setFocus, setPhase, setClock }
     // Выгрузка в SVG ведёт время сама: часы не идут, сцена отдаёт перемотку.
     if (exporting) return registerForExport(timeline, canvasRef, cursorRef, rippleRef, setters)
     return runClock(timeline, canvasRef, cursorRef, rippleRef, setters)
@@ -110,8 +120,8 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
 
   const state = useMemo(() => stateAt(story, timeline, step), [story, timeline, step])
   const context = useMemo<SceneContextValue>(
-    () => ({ hot, focus, animate: !still && !exporting && phase === 'play' }),
-    [hot, focus, still, phase],
+    () => ({ hot, focus, animate: !still && !exporting && phase === 'play', clock: exporting ? clock : null }),
+    [hot, focus, still, phase, clock],
   )
 
   const fade: CSSProperties =
@@ -159,6 +169,7 @@ interface Setters {
   setHot: (hot: SceneContextValue['hot']) => void
   setFocus: (target: string | null) => void
   setPhase: (phase: Phase) => void
+  setClock: (t: number | null) => void
 }
 
 type Point = { x: number; y: number }
@@ -348,6 +359,7 @@ function registerForExport<S>(
     seek: (t) => {
       let info!: FrameInfo
       flushSync(() => {
+        set.setClock(t)
         info = frameAt(t)
       })
       return info
@@ -416,9 +428,13 @@ export function ScenePlane({ children }: { children: ReactNode }) {
 
 type AppearPhase = 'shown' | 'entering' | 'exiting' | 'hidden'
 
-function useAppear(show: boolean) {
-  const { animate } = useContext(SceneContext)
+function useAppear(show: boolean): { phase: AppearPhase; at: number | undefined } {
+  const { animate, clock } = useContext(SceneContext)
   const [phase, setPhase] = useState<AppearPhase>(show ? 'shown' : 'hidden')
+  // Выгрузка в SVG: смена `show` запоминается со временем, фаза — функция
+  // возраста смены. Перемотка назад (новый цикл) — сброс без анимации:
+  // при повторе элементы встают на место сразу, как в живой сцене.
+  const flip = useRef({ show, at: -Infinity, last: -Infinity })
 
   useEffect(() => {
     if (!animate) {
@@ -434,7 +450,24 @@ function useAppear(show: boolean) {
     return () => window.clearTimeout(timer)
   }, [show, animate])
 
-  return phase
+  if (clock !== null) {
+    const f = flip.current
+    if (clock < f.last) Object.assign(f, { show, at: -Infinity })
+    else if (f.show !== show) Object.assign(f, { show, at: clock })
+    f.last = clock
+    // Как в живой сцене: появившийся элемент остаётся в фазе `entering`
+    // (на ней держится подсветка результата), ушедший живёт `APPEAR.exit`.
+    const appeared = Number.isFinite(f.at)
+    const p: AppearPhase = show
+      ? appeared
+        ? 'entering'
+        : 'shown'
+      : clock - f.at < APPEAR.exit
+        ? 'exiting'
+        : 'hidden'
+    return { phase: p, at: Number.isFinite(f.at) ? f.at : undefined }
+  }
+  return { phase, at: undefined }
 }
 
 export interface SceneAppearProps {
@@ -454,7 +487,7 @@ export interface SceneAppearProps {
  * сбросе перед повтором анимации нет — элемент просто стоит на месте.
  */
 export function SceneAppear({ show, kind = 'item', children }: SceneAppearProps) {
-  const phase = useAppear(show)
+  const { phase, at } = useAppear(show)
   const { hot } = useContext(SceneContext)
   const targets = useRef(new Set<string>()).current
   if (phase === 'hidden') return null
@@ -466,7 +499,7 @@ export function SceneAppear({ show, kind = 'item', children }: SceneAppearProps)
   // постоянного фона у отмеченной.
   const rowState = inRow ? (hot?.state === 'pressed' ? 'pressed' : 'hovered') : undefined
   return (
-    <div className="OnbScene__appear" data-kind={kind} data-phase={phase}>
+    <div className="OnbScene__appear" data-kind={kind} data-phase={phase} data-at={at}>
       <ItemContext.Provider value={targets}>
         <div
           className="OnbScene__pop"
@@ -494,10 +527,10 @@ export interface SceneWindowProps {
  * холста. Появление — родная анимация накладок ДС, уход — `APPEAR.exit`.
  */
 export function SceneWindow({ open, label, actions, children }: SceneWindowProps) {
-  const phase = useAppear(open)
+  const { phase, at } = useAppear(open)
   if (phase === 'hidden') return null
   return (
-    <Blackout className="OnbScene__blackout" data-phase={phase}>
+    <Blackout className="OnbScene__blackout" data-phase={phase} data-at={at}>
       <div className="Modal sq-appear sq-appear--dialog OnbScene__window" data-width="extraSmall">
         <ModalHeader label={label} onClose={() => {}} />
         <div className="Modal__content">{children}</div>

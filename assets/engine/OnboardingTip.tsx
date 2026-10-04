@@ -9,7 +9,7 @@ import './onboarding.css'
 const OPEN_DELAY = 250
 
 export interface OnboardingTipProps {
-  /** Что за фича — `headline-h6`, одна строка. */
+  /** Что за фича — `headline-h5` (16 px, жирный), одна строка. */
   title: string
   /** Зачем она — `body-m`, одно-два предложения, без точки в конце. */
   text: string
@@ -75,7 +75,7 @@ export function OnboardingTip({
         <span className="OnbTip__bubble sq-appear" data-side={side} role="tooltip">
           {scene}
           <span className="OnbTip__text">
-            <span className="OnbTip__title headline-h6">{title}</span>
+            <span className="OnbTip__title headline-h5">{title}</span>
             <span className="OnbTip__description body-m">{text}</span>
           </span>
         </span>

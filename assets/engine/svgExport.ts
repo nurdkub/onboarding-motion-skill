@@ -1,4 +1,4 @@
-import { BEAT } from './motion'
+import { APPEAR, BEAT, DURATION, FEEDBACK, cssEase } from './motion'
 import type { FrameInfo, SceneController } from './OnboardingScene'
 
 /**
@@ -17,6 +17,13 @@ import type { FrameInfo, SceneController } from './OnboardingScene'
  * отличные от умолчания его тега (и от родителя — у наследуемых), одинаковые
  * наборы сводятся в общие классы. Иконки Material рисуются в PNG через canvas:
  * шрифт иконок в SVG не встраивается — он весит больше всей сцены.
+ *
+ * Движение внутри снимков — тоже как в сцене (05.10.2026): строки появляются
+ * со сдвигом и уходят затуханием, окно и меню — родной анимацией накладок ДС,
+ * результат вспыхивает акцентом, строка подрастает при нажатии, наведение
+ * перетекает за `duration/fast`. Шрифты текста встраиваются — только те
+ * начертания и подмножества, буквы которых есть в сцене: без них SVG
+ * показывал Arial и выглядел чужим.
  */
 
 const SKIP = /^(inset-block|inset-inline|margin-block|margin-inline|padding-block|padding-inline|border-block|border-inline|block-size|inline-size|min-block-size|min-inline-size|max-block-size|max-inline-size|overflow-block|overflow-inline|contain-intrinsic|border-start|border-end|scroll-margin|scroll-padding|transition|animation|will-change|cursor|pointer-events|user-select|-webkit-user-select|caret-color|-webkit-tap-highlight-color|outline|scroll|overscroll|touch-action|-webkit-user-drag|interactivity|view-transition|anchor|position-anchor|position-try|math|interpolate-size|field-sizing|zoom|app-region|-webkit-print|print|speak|hyphenate|ruby|text-size-adjust|-webkit-text-size-adjust)/
@@ -34,7 +41,6 @@ const INHERITED = new Set([
 
 const CURRENT_COLOR = /^(border-(top|right|bottom|left)-color|outline-color|text-decoration-color|column-rule-color|text-emphasis-color|-webkit-text-fill-color|-webkit-text-stroke-color)$/
 
-const FONT_STACK = 'Roboto, Arial, "Helvetica Neue", "Segoe UI", sans-serif'
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const XHTML_NS = 'http://www.w3.org/1999/xhtml'
 const SAMPLE_MS = 1000 / 30
@@ -42,7 +48,14 @@ const SAMPLE_MS = 1000 / 30
 interface Built {
   rules: Map<string, string>
   icons: Map<string, string>
+  /** Анимации внутри снимков: ключ — что и когда, значение — имя класса. */
+  anims: Map<string, string>
+  animCss: string[]
+  /** Какие буквы каким начертанием набраны: `семейство|вес|стиль` → символы. */
+  glyphs: Map<string, Set<string>>
 }
+
+const EPS = 0.5
 
 export async function exportSceneSvg(root: HTMLElement, ctrl: SceneController) {
   const kill = document.createElement('style')
@@ -83,7 +96,34 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     return d
   }
 
-  const built: Built = { rules: new Map(), icons: new Map() }
+  const built: Built = { rules: new Map(), icons: new Map(), anims: new Map(), animCss: [], glyphs: new Map() }
+  const pct = (t: number) => `${+((Math.max(0, Math.min(loop, t)) / loop) * 100).toFixed(4)}%`
+
+  /**
+   * Анимация, привязанная к моменту цикла: все снимки, где лежит элемент,
+   * получают один класс, поэтому движение не рвётся на смене снимка.
+   */
+  const animClass = (key: string, frames: () => string, extra = '') => {
+    let name = built.anims.get(key)
+    if (!name) {
+      name = `a${built.anims.size.toString(36)}`
+      built.anims.set(key, name)
+      built.animCss.push(`.${name}{animation:k${name} ${loop}ms linear infinite${extra ? ';' + extra : ''}}@keyframes k${name}{${frames()}}`)
+    }
+    return name
+  }
+  /** Переход `from → to` за `dur` мс с момента `at`, до и после — стоит. */
+  const span = (at: number, dur: number, from: string, to: string, ease: string) =>
+    `0%{${from}}${pct(at)}{${from};animation-timing-function:${ease}}${pct(at + dur)}{${to}}100%{${to}}`
+
+  const noteGlyphs = (cs: CSSStyleDeclaration, text: string) => {
+    if (!text.trim() || /Material Icons/.test(cs.fontFamily)) return
+    const family = cs.fontFamily.split(',')[0].trim().replace(/^["']|["']$/g, '')
+    const key = `${family}|${cs.fontWeight}|${cs.fontStyle}`
+    let set = built.glyphs.get(key)
+    if (!set) built.glyphs.set(key, (set = new Set()))
+    for (const ch of text) set.add(ch)
+  }
   const classFor = (css: string) => {
     let name = built.rules.get(css)
     if (!name) {
@@ -141,9 +181,6 @@ async function build(root: HTMLElement, ctrl: SceneController) {
         continue
       }
       if (!pseudo && (p === 'width' || p === 'height') && !needsSize(el, p)) continue
-      if (p === 'font-family') v = FONT_STACK
-      // Начертания 500 в Arial и Helvetica нет — без Roboto оно падало бы в обычное.
-      if (p === 'font-weight' && v === '500') v = '600'
       out.push(`${p}:${short(v)}`)
     }
     return { cs, css: out.join(';') }
@@ -233,7 +270,10 @@ async function build(root: HTMLElement, ctrl: SceneController) {
       for (const a of ['type', 'placeholder']) if (el.hasAttribute(a)) clone.setAttribute(a, el.getAttribute(a)!)
       if (el.type === 'checkbox' || el.type === 'radio') {
         if (el.checked) clone.setAttribute('checked', '')
-      } else clone.setAttribute('value', el.value)
+      } else {
+        clone.setAttribute('value', el.value)
+        noteGlyphs(cs, el.value || el.placeholder)
+      }
       const ph = getComputedStyle(el, '::placeholder').color
       rule += `|ph:${ph}`
     } else if (el instanceof HTMLImageElement) {
@@ -257,21 +297,124 @@ async function build(root: HTMLElement, ctrl: SceneController) {
       if (tops.size === 1 && cs.whiteSpace !== 'nowrap') rule += ';white-space:nowrap'
     }
 
+    // Подсветка результата — псевдоэлемент с анимацией: снимается отдельным слоем ниже.
+    const isAppear = el instanceof HTMLElement && el.classList.contains('OnbScene__appear')
     for (const pseudo of ['::before', '::after']) {
+      if (isAppear) continue
       const content = getComputedStyle(el, pseudo).content
       if (content && content !== 'none' && content !== 'normal') rule += `|${pseudo}{${styleOf(el, null, pseudo).css}}`
     }
-    if (rule) clone.setAttribute('class', classFor(rule))
+    const classes = rule ? [classFor(rule)] : []
+    const motion = el instanceof HTMLElement ? motionOf(el) : null
+    if (motion) classes.push(motion)
+    if (classes.length) clone.setAttribute('class', classes.join(' '))
+    if (isAppear) {
+      const h = el as HTMLElement
+      const at = Number(h.dataset.at)
+      if (h.dataset.kind === 'result' && h.dataset.phase === 'entering' && Number.isFinite(at)) {
+        const bg = getComputedStyle(h, '::after').backgroundColor
+        const flash = document.createElementNS(XHTML_NS, 'span')
+        flash.setAttribute(
+          'class',
+          animClass(
+            `flash:${at}`,
+            () =>
+              `0%{opacity:1}${pct(at + APPEAR.enter)}{opacity:1;animation-timing-function:${cssEase('enter')}}${pct(at + APPEAR.enter + APPEAR.highlight)}{opacity:0}100%{opacity:0}`,
+            `position:absolute;left:0;top:0;right:0;bottom:0;background:${bg};mix-blend-mode:multiply;pointer-events:none`,
+          ),
+        )
+        clone.append(flash)
+      }
+    }
 
     if (isIcon) return clone
     for (const child of Array.from(el.childNodes)) {
-      if (child.nodeType === Node.TEXT_NODE) clone.append(child.textContent ?? '')
+      if (child.nodeType === Node.TEXT_NODE) {
+        noteGlyphs(cs, child.textContent ?? '')
+        clone.append(child.textContent ?? '')
+      }
       else if (child.nodeType === Node.ELEMENT_NODE) {
         const c = snap(child as Element, cs)
         if (c) clone.append(c)
       }
     }
     return clone
+  }
+
+  /**
+   * Движение элемента в момент снимка `now`:
+   * - строка и результат (`SceneAppear`) — появление со сдвигом, уход затуханием;
+   * - окно сцены (`SceneWindow`) — затемнение уходит затуханием;
+   * - накладки ДС (`sq-appear`: окно, меню) — родная анимация появления;
+   * - строка, в которой отпустили цель, — подрастание.
+   */
+  let now = 0
+  const appearedAt = new WeakMap<Element, number>()
+  const motionOf = (el: HTMLElement): string | null => {
+    const at = Number(el.dataset.at)
+    const phase = el.dataset.phase
+    if (el.classList.contains('OnbScene__appear') && Number.isFinite(at)) {
+      if (phase === 'entering') {
+        const off = APPEAR.offset
+        return animClass(`enter:${at}`, () =>
+          span(at, APPEAR.enter, `opacity:0;transform:translate3d(0,-${off}px,0)`, 'opacity:1;transform:none', cssEase('enter')),
+        )
+      }
+      if (phase === 'exiting') {
+        return animClass(`exit:${at}`, () => span(at, APPEAR.exit, 'opacity:1', 'opacity:0', cssEase('exit')))
+      }
+    }
+    if (el.classList.contains('OnbScene__blackout') && phase === 'exiting' && Number.isFinite(at)) {
+      return animClass(`exit:${at}`, () => span(at, APPEAR.exit, 'opacity:1', 'opacity:0', cssEase('exit')))
+    }
+    if (el.classList.contains('sq-appear')) {
+      const since = appearedAt.get(el)
+      if (since === undefined) return null
+      const cs = getComputedStyle(el)
+      const v = (n: string) => cs.getPropertyValue(n).trim()
+      const dur = parseFloat(v('--sq-appear-duration')) || DURATION.fast
+      const easing = v('--sq-appear-easing') || cssEase('enter')
+      const from = `opacity:0;transform:translate3d(${v('--sq-appear-x') || 0},${v('--sq-appear-y') || 0},0) scale(${v('--sq-appear-scale') || 1})`
+      return animClass(`sq:${since}:${from}:${dur}`, () => span(since, dur, from, 'opacity:1;transform:none', easing))
+    }
+    if (el.classList.contains('OnbScene__pop') && el.hasAttribute('data-pop')) {
+      const hot = T.hots.find((h) => h.state === 'released' && h.start <= now && now < h.end)
+      if (!hot) return null
+      const s0 = hot.start
+      const d = FEEDBACK.pop
+      const mv = cssEase('move')
+      return animClass(
+        `pop:${s0}`,
+        () =>
+          `0%{transform:none}${pct(s0)}{transform:scale(1);animation-timing-function:${mv}}${pct(s0 + d * 0.4)}{transform:scale(${FEEDBACK.popScale});animation-timing-function:${mv}}${pct(s0 + d)}{transform:none}100%{transform:none}`,
+        'transform-origin:50% 50%',
+      )
+    }
+    return null
+  }
+
+  /**
+   * Когда появилась каждая накладка `sq-appear`: впервые замеченная в снимке —
+   * появилась в этот момент. Ключ — путь от холста: React держит те же узлы,
+   * но путь надёжнее. Накладки, стоявшие с начала цикла, не анимируются.
+   */
+  let seenBefore = new Map<string, number>()
+  const pathOf = (el: Element, top: Element) => {
+    const parts: string[] = []
+    for (let n: Element | null = el; n && n !== top; n = n.parentElement) {
+      parts.push(`${n.localName}${n.parentElement ? Array.prototype.indexOf.call(n.parentElement.children, n) : ''}`)
+    }
+    return parts.join('/')
+  }
+  const trackAppear = (top: Element, t: number, first: boolean) => {
+    const seen = new Map<string, number>()
+    top.querySelectorAll('.sq-appear').forEach((el) => {
+      const key = pathOf(el, top)
+      const since = seenBefore.get(key) ?? (first ? -1 : t)
+      seen.set(key, since)
+      if (since >= 0) appearedAt.set(el, since)
+    })
+    seenBefore = seen
   }
 
   // Меняется только холст сцены: рамка подсказки и текст под сценой — один
@@ -285,16 +428,22 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   // ── ключевые моменты: каждое событие, наведение, нажатие, фокус ──────────
   const marks = new Set<number>([0])
-  T.events.forEach((e) => marks.add(e.at))
+  T.events.forEach((e) => (marks.add(e.at), marks.add(e.at + APPEAR.exit)))
   T.hots.forEach((h) => (marks.add(h.start), marks.add(h.end)))
   T.focuses.forEach((f) => (marks.add(f.start), marks.add(f.end)))
   const times = [...marks].filter((t) => t < T.total).sort((a, b) => a - b)
 
   const shots: string[] = []
-  const segments: { shot: number; start: number; end: number }[] = []
+  const segments: { shot: number; start: number; end: number; cut: boolean }[] = []
+  // Смена состояния и уход строки — резкая, как в сцене (движение даёт сам
+  // элемент); наведение и нажатие перетекают, как переход цвета у компонентов.
+  const cuts = new Set<number>([0])
+  T.events.forEach((e) => (cuts.add(e.at), cuts.add(e.at + APPEAR.exit)))
   ctrl.seek(loop - 1) // сброс кешей пути курсора: следующая перемотка — назад
   for (let i = 0; i < times.length; i++) {
     ctrl.seek(times[i] + 0.5)
+    now = times[i] + 0.5
+    trackAppear(canvasEl, times[i], i === 0)
     const html = snapshot()
     let id = shots.indexOf(html)
     if (id === -1) id = shots.push(html) - 1
@@ -302,11 +451,11 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     const end = i + 1 < times.length ? times[i + 1] : resetAt
     const last = segments[segments.length - 1]
     if (last && last.shot === id) last.end = end
-    else segments.push({ shot: id, start, end })
+    else segments.push({ shot: id, start, end, cut: cuts.has(start) })
   }
   // Хвост цикла: после затухания сцена встаёт в начало.
   const first = segments[0].shot
-  segments.push({ shot: first, start: resetAt, end: loop })
+  segments.push({ shot: first, start: resetAt, end: loop, cut: true })
 
   // ── путь курсора и круг нажатия: те же часы, шаг 1/30 с ──────────────────
   const canvas = ctrl.canvas!
@@ -333,21 +482,32 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   const W = Math.ceil(rr.width)
   const H = Math.ceil(rr.height)
-  const pct = (t: number) => `${+((t / loop) * 100).toFixed(2)}%`
-  const FADE = 60
+  const FADE = FEEDBACK.rowHighlight
 
-  // Видимость снимков: входящий проявляется за 60 мс поверх уходящего.
+  // Видимость снимков. Входящий лежит выше (z-index 2) и при наведении
+  // проявляется за `duration/fast` поверх уходящего — так в SVG выглядит
+  // переход цвета; при смене состояния снимок встаёт сразу.
   const shotRules = shots.map((_, id) => {
-    const own = segments.filter((s) => s.shot === id)
-    const pts: string[] = []
-    const startsAtZero = own.some((s) => s.start === 0)
-    pts.push(`0%{opacity:${startsAtZero ? 1 : 0}}`)
-    own.forEach((s) => {
-      if (s.start > 0) pts.push(`${pct(s.start)}{opacity:0}`, `${pct(Math.min(s.start + FADE, s.end))}{opacity:1}`)
-      if (s.end < loop) pts.push(`${pct(s.end + FADE * 0.99)}{opacity:1}`, `${pct(Math.min(s.end + FADE, loop))}{opacity:0}`)
+    const pts: [number, number, number][] = []
+    segments.forEach((s, i) => {
+      if (s.shot !== id) return
+      // Короткий отрезок (нажатие — 100 мс) успевает проявиться только за свою длину.
+      const fadeIn = s.cut ? 0 : Math.min(FADE, s.end - s.start - 2 * EPS)
+      if (s.start <= 0) pts.push([0, 1, 2])
+      else pts.push([s.start - EPS, 0, 1], [s.start, 0, 2], [s.start + fadeIn, 1, 2])
+      const next = segments[i + 1]
+      // Уходящий снимок держится под входящим, пока тот проявляется, но не
+      // дольше, чем до своего следующего появления.
+      const again = segments.slice(i + 1).find((x) => x.shot === id)
+      const hold = Math.min(next ? Math.min(FADE, next.end - next.start) : 0, again ? again.start - s.end - 3 * EPS : Infinity)
+      if (!next) pts.push([loop, 1, 2])
+      else if (next.cut || hold <= 0) pts.push([s.end - EPS, 1, 2], [s.end, 0, 1])
+      else pts.push([s.end - EPS, 1, 2], [s.end, 1, 1], [s.end + hold, 1, 1], [s.end + hold + EPS, 0, 1])
     })
-    if (own.some((s) => s.end >= loop)) pts.push('100%{opacity:1}')
-    return `.s${id}{animation:k${id} ${loop}ms linear infinite}@keyframes k${id}{${pts.join('')}}`
+    if (pts[0][0] > 0) pts.unshift([0, 0, 1])
+    if (pts[pts.length - 1][0] < loop) pts.push([loop, 0, 1])
+    const body = pts.map(([t, o, z]) => `${pct(t)}{opacity:${o};z-index:${z}}`).join('')
+    return `.s${id}{animation:k${id} ${loop}ms linear infinite}@keyframes k${id}{${body}}`
   })
 
   const tr = (x: number, y: number, s: number) =>
@@ -368,7 +528,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   cursorKf.push(`${pct(resetAt + 1)}{transform:${tr(samples[0].f.pos.x, samples[0].f.pos.y, 1)}}`, `100%{transform:${tr(samples[0].f.pos.x, samples[0].f.pos.y, 1)}}`)
   dropKf.push('100%{opacity:0}')
 
-  const allKf = `0%{opacity:1}${pct(T.total)}{opacity:1}${pct(resetAt)}{opacity:0}${pct(resetAt + BEAT.fadeIn)}{opacity:1}100%{opacity:1}`
+  const allKf = `0%{opacity:1}${pct(T.total)}{opacity:1;animation-timing-function:${cssEase('exit')}}${pct(resetAt)}{opacity:0;animation-timing-function:${cssEase('enter')}}${pct(resetAt + BEAT.fadeIn)}{opacity:1}100%{opacity:1}`
 
   const cssRules = [...built.rules.entries()].map(([rule, name]) => {
     const [main, ...extra] = rule.split('|')
@@ -388,6 +548,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     '.f{position:absolute;left:0;top:0;opacity:0}',
     `.all{animation:ka ${loop}ms linear infinite}@keyframes ka{${allKf}}`,
     ...shotRules,
+    ...built.animCss,
     `#cu{animation:kc ${loop}ms linear infinite}@keyframes kc{${cursorKf.join('')}}`,
     `#ri{opacity:0;animation:kd ${loop}ms linear infinite}@keyframes kd{${dropKf.join('')}}`,
     '@media (prefers-reduced-motion:reduce){.f,#cu,#ri,.all{animation:none}.fin{opacity:1}#cu,#ri{display:none}}',
@@ -403,7 +564,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   const svg =
     `<svg xmlns="${SVG_NS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    `<style><![CDATA[${style}]]></style>` +
+    `<style><![CDATA[${await embedFonts(built.glyphs)}${style}]]></style>` +
     `<defs><clipPath id="sc"><rect x="${(sr.left - rr.left).toFixed(2)}" y="${(sr.top - rr.top).toFixed(2)}" width="${sr.width.toFixed(2)}" height="${sr.height.toFixed(2)}"/></clipPath></defs>` +
     `<foreignObject width="${W}" height="${H}"><div xmlns="${XHTML_NS}" style="position:relative;width:${W}px;height:${H}px">${base}${stage}</div></foreignObject>` +
     `<g class="all" clip-path="url(#sc)"><circle id="ri" r="${r.toFixed(2)}" fill="${ccs.backgroundColor}"/>` +
@@ -411,4 +572,79 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   frame.remove()
   return { svg, shots: shots.length, segments: segments.length, bytes: new Blob([svg]).size }
+}
+
+/* ── шрифты ────────────────────────────────────────────────────────────────
+ * Встраиваются начертания, которыми в сцене набран текст, и только те файлы
+ * подмножеств (`unicode-range`), где есть его буквы: кириллица и латиница
+ * Roboto — это несколько файлов по 12–22 КБ, а не вся гарнитура. Иконки
+ * Material не встраиваются — они уже картинки.
+ */
+type Range = [number, number]
+
+function parseRanges(value: string): Range[] {
+  if (!value) return [[0, 0x10ffff]]
+  return value.split(',').map((part) => {
+    const x = part.trim().replace(/^U\+/i, '')
+    if (x.includes('?')) return [parseInt(x.replace(/\?/g, '0'), 16), parseInt(x.replace(/\?/g, 'F'), 16)]
+    const [a, b] = x.split('-')
+    return [parseInt(a, 16), parseInt(b ?? a, 16)]
+  })
+}
+
+function weightFits(rule: string, weight: string) {
+  const w = Number(weight)
+  const [a, b] = rule.split(/\s+/).map((n) => (n === 'normal' ? 400 : n === 'bold' ? 700 : Number(n)))
+  return b === undefined || Number.isNaN(b) ? a === w : a <= w && w <= b
+}
+
+async function toBase64(buf: ArrayBuffer) {
+  const bytes = new Uint8Array(buf)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
+  return btoa(bin)
+}
+
+async function embedFonts(glyphs: Map<string, Set<string>>) {
+  const faces: { rule: CSSFontFaceRule; base: string }[] = []
+  for (const sheet of Array.from(document.styleSheets)) {
+    let rules: CSSRuleList
+    try {
+      rules = sheet.cssRules
+    } catch {
+      continue
+    }
+    for (const r of Array.from(rules)) if (r instanceof CSSFontFaceRule) faces.push({ rule: r, base: sheet.href ?? location.href })
+  }
+  const out: string[] = []
+  const done = new Set<string>()
+  for (const [key, chars] of glyphs) {
+    const [family, weight, style] = key.split('|')
+    const codes = [...chars].map((c) => c.codePointAt(0)!)
+    for (const { rule, base } of faces) {
+      const fam = rule.style.getPropertyValue('font-family').trim().replace(/^["']|["']$/g, '')
+      if (fam !== family) continue
+      if (!weightFits(rule.style.getPropertyValue('font-weight') || '400', weight)) continue
+      if ((rule.style.getPropertyValue('font-style') || 'normal') !== style) continue
+      const range = rule.style.getPropertyValue('unicode-range')
+      const ranges = parseRanges(range)
+      if (!codes.some((c) => ranges.some(([a, b]) => a <= c && c <= b))) continue
+      const src = rule.style.getPropertyValue('src')
+      const m = src.match(/url\(\s*["']?([^"')]+)["']?\s*\)\s*format\(\s*["']?woff2/) ?? src.match(/url\(\s*["']?([^"')]+)["']?\s*\)/)
+      if (!m) continue
+      const url = new URL(m[1], base).href
+      if (done.has(`${fam}|${weight}|${url}`)) continue
+      done.add(`${fam}|${weight}|${url}`)
+      try {
+        const data = m[1].startsWith('data:') ? m[1] : `data:font/woff2;base64,${await toBase64(await (await fetch(url)).arrayBuffer())}`
+        const format = /woff2/.test(m[0]) || m[1].includes('woff2') ? 'woff2' : /\.ttf/.test(m[1]) ? 'truetype' : 'woff'
+        out.push(
+          `@font-face{font-family:"${fam}";font-weight:${weight};font-style:${style};${range ? `unicode-range:${range};` : ''}src:url(${data}) format("${format}")}`,
+        )
+      } catch {
+        // Не скачался файл — текст наберётся запасным шрифтом из стека.
+      }
+    }
+  }
+  return out.join('')
 }

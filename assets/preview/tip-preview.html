@@ -95,7 +95,7 @@ body {
 }
 @keyframes bubble-in { from { opacity: 0; transform: translate3d(0, -4px, 0) scale(0.98); } to { opacity: 1; transform: none; } }
 .tip-text { display: flex; flex-direction: column; gap: 2px; padding: 16px; }
-.tip-title { font-size: 16px; line-height: 22px; font-weight: 500; color: var(--text-primary); }
+.tip-title { font-size: 16px; line-height: 20px; font-weight: 500; color: var(--text-primary); } /* headline/h5: 16 px, в теме platform — Roboto Medium */
 .tip-desc { color: var(--text-secondary); }
 
 /* ── сцена: белая плоскость во всё окошко, без рамки ───────── */
@@ -229,7 +229,7 @@ const BEAT = { leadIn: 600, move: 600, hover: 200, press: 100, release: 450, dwe
 const APPEAR = { enter: 300, exit: 200 };
 const FEEDBACK = { drop: 400, dropScale: 2, dropOpacity: 0.35 };
 const SCENE = { scale: 0.75, cursorStart: { x: 400, y: 260 }, cursorPress: 0.85 };
-const LIMITS = { loop: 8000, actions: 5, typeChars: 12 };
+const LIMITS = { loop: 8000, loopMax: 9000, actions: 5, typeChars: 12 };
 const OPEN_DELAY = 250;
 const EASE = { enter: [0.16, 1, 0.3, 1], exit: [0.7, 0, 0.84, 0], move: [0.65, 0, 0.35, 1] };
 const cssEase = (n) => `cubic-bezier(${EASE[n].join(', ')})`;
@@ -292,7 +292,10 @@ function compile(story) {
   }
   t += BEAT.hold; closeFocus(t);
   if (actions > LIMITS.actions) problems.push(`Действий ${actions}, потолок ${LIMITS.actions}`);
-  if (t > LIMITS.loop) problems.push(`Цикл ${(t / 1000).toFixed(1)} с, потолок ${LIMITS.loop / 1000} с`);
+  // Цикл — целиком, с затуханием и паузой: столько человек ждёт повтора. 8 с — ориентир, 9 с — край.
+  const loop = t + BEAT.fadeOut + BEAT.fadeIn + BEAT.loopGap;
+  if (loop > LIMITS.loopMax) problems.push(`Цикл ${(loop / 1000).toFixed(1)} с, край ${LIMITS.loopMax / 1000} с`);
+  else if (loop > LIMITS.loop) console.warn(`[onboarding] Цикл ${(loop / 1000).toFixed(1)} с — дольше ориентира ${LIMITS.loop / 1000} с`);
   if (problems.length) console.warn('[onboarding] сцена за потолками:', problems.join('; '));
   return { moves, hots, focuses, events, total: t, loop: t + BEAT.fadeOut + BEAT.fadeIn + BEAT.loopGap };
 }

@@ -100,6 +100,8 @@ export interface Timeline<S> {
   loop: number
   /** Нарушения потолков `LIMITS`. Непустой список — сцена не играет. */
   problems: string[]
+  /** Мягкие нарушения: сцена играет, но длиннее ориентира. */
+  warnings: string[]
 }
 
 export function compile<S>(story: Story<S>): Timeline<S> {
@@ -177,9 +179,18 @@ export function compile<S>(story: Story<S>): Timeline<S> {
       `Действий пользователя ${actions}, потолок ${LIMITS.actions}. Это две фичи — разделите на две подсказки`,
     )
   }
-  if (t > LIMITS.loop) {
+  // Цикл меряется целиком, вместе с затуханием и паузой перед повтором:
+  // столько человек ждёт, пока сцена начнётся снова.
+  const loop = t + BEAT.fadeOut + BEAT.fadeIn + BEAT.loopGap
+  const warnings: string[] = []
+  const sec = (ms: number) => (ms / 1000).toFixed(1).replace('.', ',')
+  if (loop > LIMITS.loopMax) {
     problems.push(
-      `Цикл ${(t / 1000).toFixed(1)} с, потолок ${LIMITS.loop / 1000} с. Уберите шаги, которые не показывают саму фичу`,
+      `Цикл ${sec(loop)} с, край ${sec(LIMITS.loopMax)} с. Уберите шаги, которые не показывают саму фичу`,
+    )
+  } else if (loop > LIMITS.loop) {
+    warnings.push(
+      `Цикл ${sec(loop)} с — дольше ориентира ${sec(LIMITS.loop)} с. Сцена играет, но проверьте, нет ли лишнего шага`,
     )
   }
 
@@ -189,8 +200,9 @@ export function compile<S>(story: Story<S>): Timeline<S> {
     focuses,
     events,
     total: t,
-    loop: t + BEAT.fadeOut + BEAT.fadeIn + BEAT.loopGap,
+    loop,
     problems,
+    warnings,
   }
 }
 

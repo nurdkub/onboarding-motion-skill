@@ -75,7 +75,7 @@ export function OnboardingExportPage() {
       <span className="OnbTip__bubble" style={{ position: 'relative', display: 'flex' }}>
         <Scene />
         <span className="OnbTip__text">
-          <span className="OnbTip__title headline-h6">{title}</span>
+          <span className="OnbTip__title headline-h5">{title}</span>
           <span className="OnbTip__description body-m">{text}</span>
         </span>
       </span>

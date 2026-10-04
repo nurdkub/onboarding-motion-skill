@@ -21,7 +21,7 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const OUT = join(ROOT, 'export', 'onboarding')
-const BUDGET_KB = 80
+const BUDGET_KB = 250
 
 const args = process.argv.slice(2)
 const urlArg = args.find((a) => a.startsWith('--url='))
