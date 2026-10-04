@@ -51,21 +51,30 @@
   inset-block-start: 0;
   inset-inline-start: 0;
   z-index: 200;
-  /* Кружок 20 px холста (15 на экране), центр — в точке (x, y). */
-  inline-size: 20px;
-  block-size: 20px;
-  margin-block-start: -10px;
-  margin-inline-start: -10px;
-  box-sizing: border-box;
-  /* Не токен: `borderRadius/pill` в теме business равен нулю (там скруглений
-     нет), а знак сцены круглый в любой теме — это графика, как у Logo. */
-  border-radius: 50%;
-  background: var(--colors-icon-neutral-tertiaryHovered);
-  /* Белая обводка отделяет кружок от любого фона под ним. */
-  border: var(--borderWidth-hovered) solid var(--colors-surface-onColor-neutral-primary);
-  opacity: 0.8;
-  transform-origin: center;
+  /* Стрелка мыши 16×24 px холста, остриё — в точке (x, y): продукт десктопный,
+     стрелку зритель узнаёт как свою мышь (кружок читался как палец, 05.10.2026).
+     Это графика сцены, а не иконка: глифа стрелки-указателя в material-icons нет. */
+  inline-size: 16px;
+  block-size: 24px;
+  transform-origin: 0 0;
   pointer-events: none;
+  /* Цвета стрелки — переменными: их же читает выгрузка в SVG. */
+  --onb-cursor-fill: var(--colors-icon-neutral-primary);
+  --onb-cursor-stroke: var(--colors-surface-onColor-neutral-primary);
+  /* Белая обводка — тенью родителя: clip-path на самом элементе срезал бы её. */
+  filter:
+    drop-shadow(1.5px 0 0 var(--onb-cursor-stroke))
+    drop-shadow(-1.5px 0 0 var(--onb-cursor-stroke))
+    drop-shadow(0 1.5px 0 var(--onb-cursor-stroke))
+    drop-shadow(0 -1.5px 0 var(--onb-cursor-stroke));
+}
+
+.OnbScene__cursor::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--onb-cursor-fill);
+  clip-path: polygon(0 0, 0 85%, 33% 65%, 58% 100%, 75% 92%, 50% 60%, 100% 60%);
 }
 
 /* Капля при нажатии: размер и цвет курсора, масштаб и прозрачность ведут
@@ -84,7 +93,7 @@
   opacity: 0;
   transform-origin: center;
   pointer-events: none;
-  /* Круг нажатия: цвет курсора, чёткий край (FEEDBACK.drop в motion.ts). */
+  /* Круг нажатия: серый, чёткий край (FEEDBACK.drop в motion.ts); центр — остриё стрелки. */
   background: var(--colors-icon-neutral-tertiaryHovered);
 }
 
@@ -192,7 +201,10 @@
   animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
 }
 
+/* Окно всегда внутри холста с полями: у `Modal` ширина фиксированная, а его
+   собственный потолок считается от вьюпорта (100vw), не от холста. */
 .OnbScene__window {
+  max-inline-size: calc(100% - 2 * var(--paddings-07));
   max-block-size: calc(100% - 2 * var(--paddings-07));
 }
 

@@ -664,6 +664,9 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   const presses = T.hots.filter((h) => h.state === 'pressed').map((h) => ({ ...h, pos: posAt.get(h.start + EPS)! }))
   const cursorEl = canvas.querySelector('.OnbScene__cursor') as HTMLElement
   const ccs = getComputedStyle(cursorEl)
+  const rippleColor = getComputedStyle(canvas.querySelector('.OnbScene__ripple') as HTMLElement).backgroundColor
+  const cursorFill = ccs.getPropertyValue('--onb-cursor-fill').trim()
+  const cursorStroke = ccs.getPropertyValue('--onb-cursor-stroke').trim()
   const sr = sceneEl.getBoundingClientRect()
   const sx = sr.left - rr.left
   const sy = sr.top - rr.top
@@ -781,6 +784,9 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   })
 
   const r = 10 * k
+  // Стрелка — тот же контур, что clip-path в onboarding.css (16×24 px холста, остриё в нуле).
+  const ARROW = [[0, 0], [0, 20.4], [5.28, 15.6], [9.28, 24], [12, 22.08], [8, 14.4], [16, 14.4]]
+  const arrow = 'M' + ARROW.map(([x, y]) => `${(x * k).toFixed(2)} ${(y * k).toFixed(2)}`).join('L') + 'Z'
   const style = [
     '*{box-sizing:border-box}.f{position:absolute;left:0;top:0;opacity:0}',
     `.all{animation:ka ${loop}ms linear infinite}@keyframes ka{${allKf}}`,
@@ -806,8 +812,8 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     `<style><![CDATA[${FONTS_MARK}${style}]]></style>` +
     `<defs><clipPath id="sc"><rect x="${(sr.left - rr.left).toFixed(2)}" y="${(sr.top - rr.top).toFixed(2)}" width="${sr.width.toFixed(2)}" height="${sr.height.toFixed(2)}"/></clipPath></defs>` +
     `<foreignObject width="${W}" height="${H}"><div xmlns="${XHTML_NS}" style="position:relative;width:${W}px;height:${H}px">${base}${stage}</div></foreignObject>` +
-    `<g class="all" clip-path="url(#sc)"><g id="rio"><circle id="ri" r="${r.toFixed(2)}" fill="${ccs.backgroundColor}"/></g>` +
-    `<circle id="cu" r="${(r - k).toFixed(2)}" fill="${ccs.backgroundColor}" opacity="0.8" stroke="${ccs.borderTopColor}" stroke-width="${(2 * k).toFixed(2)}"/></g></svg>`
+    `<g class="all" clip-path="url(#sc)"><g id="rio"><circle id="ri" r="${r.toFixed(2)}" fill="${rippleColor}"/></g>` +
+    `<path id="cu" d="${arrow}" fill="${cursorFill}" stroke="${cursorStroke}" stroke-width="${(3 * k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke"/></g></svg>`
 
   frame.remove()
   return {

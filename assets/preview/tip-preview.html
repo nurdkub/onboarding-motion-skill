@@ -101,8 +101,8 @@ body {
 /* ── сцена: белая плоскость во всё окошко, без рамки ───────── */
 .scene { display: block; position: relative; width: 360px; height: 240px; overflow: hidden; background: var(--surface); }
 .canvas {
-  display: block; position: absolute; top: 0; left: 0; width: 480px; height: 320px;
-  transform: scale(0.75); transform-origin: 0 0; padding: 0; overflow: hidden;
+  display: block; position: absolute; top: 0; left: 0; width: 400px; height: 267px;
+  transform: scale(0.9); transform-origin: 0 0; padding: 0; overflow: hidden;
 }
 .plane { height: 100%; padding: 20px; background: var(--surface); display: flex; flex-direction: column; gap: 12px; }
 
@@ -152,12 +152,22 @@ body {
 .pop[data-row-state="pressed"] { background-color: var(--row-pressed); }
 .pop[data-pop] { animation: onb-pop 450ms cubic-bezier(0.65, 0, 0.35, 1) both; }
 @keyframes onb-pop { 0% { transform: scale(1); } 40% { transform: scale(1.02); } 100% { transform: scale(1); } }
-.cursor, .ripple {
+.ripple {
   position: absolute; top: 0; left: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px;
   border-radius: 50%; background: var(--cursor); pointer-events: none; transform-origin: center;
+  z-index: 199; opacity: 0;
 }
-.cursor { z-index: 200; opacity: 0.8; border: 2px solid var(--surface); }
-.ripple { z-index: 199; opacity: 0; }
+/* Курсор — стрелка мыши 16×24 холста, остриё в точке (x, y); обводка — тенью родителя. */
+.cursor {
+  position: absolute; top: 0; left: 0; width: 16px; height: 24px; z-index: 200;
+  pointer-events: none; transform-origin: 0 0;
+  filter: drop-shadow(1.5px 0 0 var(--surface)) drop-shadow(-1.5px 0 0 var(--surface))
+    drop-shadow(0 1.5px 0 var(--surface)) drop-shadow(0 -1.5px 0 var(--surface));
+}
+.cursor::before {
+  content: ""; position: absolute; inset: 0; background: var(--text-primary);
+  clip-path: polygon(0 0, 0 85%, 33% 65%, 58% 100%, 75% 92%, 50% 60%, 100% 60%);
+}
 
 .note { margin-top: 24px; color: var(--text-secondary); font-size: 13px; line-height: 19px; max-width: 64ch; }
 @media (max-width: 480px) { .form { padding: 16px; min-height: 400px; } .bubble { left: -4px; } }
@@ -228,7 +238,7 @@ const BEAT = { leadIn: 600, move: 600, hover: 200, press: 100, release: 450, dwe
   fadeOut: 300, fadeIn: 300, loopGap: 400 };
 const APPEAR = { enter: 300, exit: 200 };
 const FEEDBACK = { drop: 400, dropScale: 2, dropOpacity: 0.35 };
-const SCENE = { scale: 0.75, cursorStart: { x: 400, y: 260 }, cursorPress: 0.85 };
+const SCENE = { scale: 0.9, cursorStart: { x: 333, y: 217 }, cursorPress: 0.85 };
 const LIMITS = { loop: 8000, loopMax: 9000, actions: 5, typeChars: 12 };
 const OPEN_DELAY = 250;
 const EASE = { enter: [0.16, 1, 0.3, 1], exit: [0.7, 0, 0.84, 0], move: [0.65, 0, 0.35, 1] };
