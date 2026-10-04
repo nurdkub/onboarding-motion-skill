@@ -784,8 +784,8 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   })
 
   const r = 10 * k
-  // Стрелка — тот же контур, что clip-path в onboarding.css (16×24 px холста, остриё в нуле).
-  const ARROW = [[0, 0], [0, 20.4], [5.28, 15.6], [9.28, 24], [12, 22.08], [8, 14.4], [16, 14.4]]
+  // Стрелка — тот же контур, что clip-path в onboarding.css (14×21 px холста, остриё в нуле).
+  const ARROW = [[0, 0], [0, 17.85], [4.62, 13.65], [8.12, 21], [10.5, 19.32], [7, 12.6], [14, 12.6]]
   const arrow = 'M' + ARROW.map(([x, y]) => `${(x * k).toFixed(2)} ${(y * k).toFixed(2)}`).join('L') + 'Z'
   const style = [
     '*{box-sizing:border-box}.f{position:absolute;left:0;top:0;opacity:0}',
