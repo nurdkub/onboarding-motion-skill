@@ -13,6 +13,11 @@
  *
  * Браузер запускается с отдельным временным профилем: профиль человека
  * не трогается. Протокол — CDP через встроенный WebSocket Node, без пакетов.
+ *
+ * Шрифт текста встраивается урезанным до букв сцены — пакетом `subset-font`
+ * (harfbuzz в WebAssembly, devDependency): Roboto целиком — 130 КБ, урезанный —
+ * единицы килобайт, и SVG укладывается в 100 КБ. Пакета нет — шрифт не
+ * встраивается, текст набирается шрифтом смотрящего (скрипт предупредит).
  */
 import { spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
@@ -21,7 +26,7 @@ import { join, resolve } from 'node:path'
 
 const ROOT = resolve(import.meta.dirname, '..')
 const OUT = join(ROOT, 'export', 'onboarding')
-const BUDGET_KB = 250
+const BUDGET_KB = 100
 
 const args = process.argv.slice(2)
 const urlArg = args.find((a) => a.startsWith('--url='))
@@ -131,6 +136,33 @@ const evaluate = async (expression, awaitPromise = false) => {
   return r.result?.result?.value
 }
 
+let subsetFont = null
+try {
+  subsetFont = (await import('subset-font')).default
+} catch {
+  console.warn('Пакета subset-font нет — шрифт не встроится. Поставьте: npm i -D subset-font')
+}
+
+/** Урезанные шрифты сцены — блок @font-face на место метки в стиле SVG. */
+async function fontCss(fonts) {
+  if (!subsetFont) return ''
+  const out = []
+  for (const f of fonts) {
+    try {
+      const buf = Buffer.from(await (await fetch(f.url)).arrayBuffer())
+      const cut = await subsetFont(buf, f.text, { targetFormat: 'woff2' })
+      out.push(
+        `@font-face{font-family:"${f.family}";font-weight:${f.weight};font-style:${f.style};` +
+          (f.range ? `unicode-range:${f.range};` : '') +
+          `src:url(data:font/woff2;base64,${cut.toString('base64')}) format("woff2")}`,
+      )
+    } catch (e) {
+      console.warn(`Шрифт ${f.family} ${f.weight} не встроен: ${e.message}`)
+    }
+  }
+  return out.join('')
+}
+
 await send('Page.enable')
 await send('Runtime.enable')
 mkdirSync(OUT, { recursive: true })
@@ -146,11 +178,12 @@ for (const slug of slugs) {
       if (await evaluate('!!window.__onbExportSvg && !!(window.__onbScenes||[]).length')) break
     }
     await evaluate('document.fonts.ready.then(() => true)', true)
-    const r = await evaluate('window.__onbExportSvg().then((r) => ({ svg: r.svg, shots: r.shots, bytes: r.bytes }))', true)
+    const r = await evaluate('window.__onbExportSvg().then((r) => ({ svg: r.svg, fonts: r.fonts, shots: r.shots, patches: r.patches }))', true)
+    const svg = r.svg.replace('/*@onb-fonts*/', await fontCss(r.fonts))
     const file = join(OUT, `${slug}.svg`)
-    writeFileSync(file, r.svg)
-    const kb = r.bytes / 1024
-    console.log(`${slug}.svg — ${kb.toFixed(1)} КБ, снимков ${r.shots}${kb > BUDGET_KB ? `  ⚠ больше ${BUDGET_KB} КБ` : ''}`)
+    writeFileSync(file, svg)
+    const kb = Buffer.byteLength(svg) / 1024
+    console.log(`${slug}.svg — ${kb.toFixed(1)} КБ, снимков ${r.shots}, заплаток ${r.patches}${kb > BUDGET_KB ? `  ⚠ больше ${BUDGET_KB} КБ` : ''}`)
   } catch (e) {
     failed = true
     console.error(`${slug}: ${e.message}`)

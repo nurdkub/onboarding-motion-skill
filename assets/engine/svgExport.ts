@@ -1,4 +1,4 @@
-import { APPEAR, BEAT, DURATION, FEEDBACK, cssEase } from './motion'
+import { APPEAR, BEAT, DURATION, FEEDBACK, SCENE, cssEase } from './motion'
 import type { FrameInfo, SceneController } from './OnboardingScene'
 
 /**
@@ -26,7 +26,7 @@ import type { FrameInfo, SceneController } from './OnboardingScene'
  * показывал Arial и выглядел чужим.
  */
 
-const SKIP = /^(inset-block|inset-inline|margin-block|margin-inline|padding-block|padding-inline|border-block|border-inline|block-size|inline-size|min-block-size|min-inline-size|max-block-size|max-inline-size|overflow-block|overflow-inline|contain-intrinsic|border-start|border-end|scroll-margin|scroll-padding|transition|animation|will-change|cursor|pointer-events|user-select|-webkit-user-select|caret-color|-webkit-tap-highlight-color|outline|scroll|overscroll|touch-action|-webkit-user-drag|interactivity|view-transition|anchor|position-anchor|position-try|math|interpolate-size|field-sizing|zoom|app-region|-webkit-print|print|speak|hyphenate|ruby|text-size-adjust|-webkit-text-size-adjust)/
+const SKIP = /^(inset-block|inset-inline|margin-block|margin-inline|padding-block|padding-inline|border-block|border-inline|block-size|inline-size|min-block-size|min-inline-size|max-block-size|max-inline-size|overflow-block|overflow-inline|contain-intrinsic|border-start|border-end|scroll-margin|scroll-padding|transition|animation|will-change|cursor|pointer-events|user-select|-webkit-user-select|caret-color|-webkit-tap-highlight-color|outline|scroll|overscroll|touch-action|-webkit-user-drag|interactivity|view-transition|anchor|position-anchor|position-try|math|interpolate-size|field-sizing|zoom|app-region|-webkit-print|print|speak|hyphenate|ruby|text-size-adjust|-webkit-text-size-adjust|row-rule|column-rule|-webkit-locale|text-rendering|-webkit-font-smoothing)/
 
 const INHERITED = new Set([
   'color', 'font-family', 'font-size', 'font-style', 'font-weight', 'font-stretch', 'font-variant',
@@ -43,7 +43,8 @@ const CURRENT_COLOR = /^(border-(top|right|bottom|left)-color|outline-color|text
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 const XHTML_NS = 'http://www.w3.org/1999/xhtml'
-const SAMPLE_MS = 1000 / 30
+/** Место в стиле, куда скрипт выгрузки кладёт урезанные шрифты. */
+export const FONTS_MARK = '/*@onb-fonts*/'
 
 interface Built {
   rules: Map<string, string>
@@ -56,6 +57,45 @@ interface Built {
 }
 
 const EPS = 0.5
+
+/**
+ * Сжатие стиля: четыре стороны рамки, поля и скругления — в одно свойство,
+ * `box-sizing: border-box` — общим правилом (как у Tailwind), `min-*: auto` —
+ * умолчание. Так правила снимков легче вдвое, а вид тот же.
+ */
+const SIDES = ['top', 'right', 'bottom', 'left'] as const
+const CORNERS = ['top-left', 'top-right', 'bottom-right', 'bottom-left'] as const
+
+function compress(list: string[]) {
+  const m = new Map(list.map((d) => {
+    const i = d.indexOf(':')
+    return [d.slice(0, i), d.slice(i + 1)] as [string, string]
+  }))
+  const take = (k: string) => {
+    const v = m.get(k)
+    m.delete(k)
+    return v
+  }
+  const extra: string[] = []
+  for (const box of ['padding', 'margin']) {
+    const v = SIDES.map((sd) => take(`${box}-${sd}`))
+    if (v.some(Boolean)) extra.push(`${box}:${v.map((x) => x ?? '0').join(' ')}`)
+  }
+  const r = CORNERS.map((c) => take(`border-${c}-radius`))
+  if (r.some(Boolean)) extra.push(`border-radius:${r.map((x) => x ?? '0').join(' ')}`)
+  const sides = SIDES.map((sd) => {
+    const w = take(`border-${sd}-width`)
+    const st = take(`border-${sd}-style`)
+    const c = take(`border-${sd}-color`)
+    return w ? `${w} ${st ?? 'solid'}${c ? ' ' + c : ''}` : null
+  })
+  if (sides.every((x) => x && x === sides[0])) extra.push(`border:${sides[0]}`)
+  else sides.forEach((x, i) => x && extra.push(`border-${SIDES[i]}:${x}`))
+  if (m.get('box-sizing') === 'border-box') m.delete('box-sizing')
+  for (const k of ['min-width', 'min-height']) if (m.get(k) === 'auto') m.delete(k)
+  if (m.get('text-wrap-mode') === 'wrap') m.delete('text-wrap-mode')
+  return [...[...m].map(([k, v]) => `${k}:${v}`), ...extra].join(';')
+}
 
 export async function exportSceneSvg(root: HTMLElement, ctrl: SceneController) {
   const kill = document.createElement('style')
@@ -155,6 +195,8 @@ async function build(root: HTMLElement, ctrl: SceneController) {
         '#' + [r, g, b].map((n: string) => Number(n).toString(16).padStart(2, '0')).join(''),
       )
       .replace(/\b0px\b/g, '0')
+      .replace(/(\d+\.\d\d)\d+px/g, '$1px')
+      .replace(/#([0-9a-f])\1([0-9a-f])\2([0-9a-f])\3\b/g, '#$1$2$3')
 
   const styleOf = (el: Element, parent: CSSStyleDeclaration | null, pseudo?: string) => {
     const cs = getComputedStyle(el, pseudo)
@@ -163,7 +205,12 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     const transformed = cs.getPropertyValue('transform') !== 'none' || cs.getPropertyValue('scale') !== 'none'
     const out: string[] = []
     for (const p of props) {
-      let v = cs.getPropertyValue(p)
+      const v = cs.getPropertyValue(p)
+      // Общее правило снимков — border-box; у кого content-box, пишется явно.
+      if (p === 'box-sizing') {
+        if (v === 'content-box') out.push('box-sizing:content-box')
+        continue
+      }
       if (v === d[p] && !(p === 'transform-origin' && transformed)) continue
       if (!pseudo && parent && INHERITED.has(p) && v === parent.getPropertyValue(p)) continue
       // У этих свойств умолчание — currentColor: совпали с цветом текста — писать
@@ -183,7 +230,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
       if (!pseudo && (p === 'width' || p === 'height') && !needsSize(el, p)) continue
       out.push(`${p}:${short(v)}`)
     }
-    return { cs, css: out.join(';') }
+    return { cs, css: compress(out) }
   }
 
   const iconUrl = (el: HTMLElement, cs: CSSStyleDeclaration) => {
@@ -192,7 +239,8 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     const key = `${el.textContent}|${cs.color}|${cs.fontSize}|${r.width}x${r.height}`
     let url = built.icons.get(key)
     if (!url) {
-      const k = 3
+      // Двойная плотность: сцена и так уменьшена до 0,75, тройная не видна глазу, а весит вдвое больше.
+      const k = 2
       const c = document.createElement('canvas')
       c.width = Math.ceil(r.width * k)
       c.height = Math.ceil(r.height * k)
@@ -249,6 +297,11 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   /** Снимок узла: клон без лишних атрибутов, стиль — классом. `skip` — узел, который не снимать. */
   let skipNode: Element | null = null
+  type Box = { x: number; y: number; w: number; h: number }
+  /** Узел снимка → исходный элемент и его место на холсте (px холста) в момент снимка. */
+  const origin = new WeakMap<Node, Element>()
+  const rects = new WeakMap<Node, Box>()
+  let canvasBox: DOMRect | null = null
   const snap = (el: Element, parent: CSSStyleDeclaration | null): Node | null => {
     if (el === skipNode) return null
     if (el instanceof HTMLElement) {
@@ -258,6 +311,12 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     if (el instanceof SVGSVGElement && el.parentElement?.namespaceURI === XHTML_NS) return svgIcon(el, parent)
     const isSvg = el.namespaceURI === SVG_NS
     const clone = document.createElementNS(el.namespaceURI ?? XHTML_NS, el.localName)
+    origin.set(clone, el)
+    if (el instanceof HTMLElement && canvasBox) {
+      const r = el.getBoundingClientRect()
+      const kk = canvasBox.width / SCENE.width
+      rects.set(clone, { x: (r.left - canvasBox.left) / kk, y: (r.top - canvasBox.top) / kk, w: r.width / kk, h: r.height / kk })
+    }
     const { cs, css } = styleOf(el, parent)
     let rule = css
 
@@ -424,7 +483,115 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   const canvasEl = ctrl.canvas!
   const sceneEl = canvasEl.parentElement!
   // Родителя у холста в SVG нет — наследуемые свойства (шрифт, цвет) пишутся ему явно.
-  const snapshot = () => serializer.serializeToString(snap(canvasEl, null) as Element)
+  const snapshot = () => {
+    canvasBox = canvasEl.getBoundingClientRect()
+    const tree = snap(canvasEl, null) as Element
+    canvasBox = null
+    return tree
+  }
+
+  /**
+   * Заплатка вместо снимка (05.10.2026, ради бюджета 100 КБ): наведение,
+   * нажатие, галочка, буква в поле меняют один узел, а снимок целиком весит
+   * килобайты. Отличие от опорного снимка ищется по дереву, и если оно
+   * собирается в одно поддерево заметно меньше снимка, в файл идёт только
+   * оно — поверх опорного, на своём месте холста и на фоне, который под ним.
+   */
+  const pathTo = (node: Node, top: Node) => {
+    const path: number[] = []
+    for (let n: Node = node; n !== top; n = n.parentNode!) path.unshift(Array.prototype.indexOf.call(n.parentNode!.childNodes, n))
+    return path
+  }
+  const follow = (top: Node, path: number[]) => path.reduce<Node | undefined>((n, i) => n?.childNodes[i], top)
+  const diffRoots = (a: Node, b: Node, out: Node[]) => {
+    if (a.isEqualNode(b)) return
+    const shallowSame =
+      a.nodeType === b.nodeType &&
+      a.nodeName === b.nodeName &&
+      a.childNodes.length === b.childNodes.length &&
+      (!(a instanceof Element) || [...a.attributes].every((x) => (b as Element).getAttribute(x.name) === x.value) && a.attributes.length === (b as Element).attributes.length)
+    if (!shallowSame || a.nodeType === Node.TEXT_NODE) {
+      out.push(b.nodeType === Node.ELEMENT_NODE ? b : b.parentNode!)
+      return
+    }
+    a.childNodes.forEach((c, i) => diffRoots(c, b.childNodes[i], out))
+  }
+  const commonRoot = (nodes: Node[], top: Node) => {
+    const paths = nodes.map((n) => pathTo(n, top))
+    const common: number[] = []
+    for (let i = 0; paths.every((p) => i < p.length && p[i] === paths[0][i]); i++) common.push(paths[0][i])
+    let node = follow(top, common)
+    // Корнем заплатки может быть только элемент разметки со своим местом на холсте.
+    while (node && node !== top && !(node instanceof HTMLElement && rects.has(node))) node = node.parentNode!
+    return node && node !== top ? (node as HTMLElement) : null
+  }
+  const moving = (el: Element) => {
+    // Предок в движении (появление, уход) — заплатка отстала бы от него.
+    for (let n: Element | null = el; n && n !== canvasEl; n = n.parentElement) {
+      const h = n as HTMLElement
+      const at = Number(h.dataset?.at)
+      const busy = h.dataset?.kind === 'result' ? APPEAR.enter + APPEAR.highlight : APPEAR.enter
+      if (Number.isFinite(at) && now - at < busy) return true
+      const since = appearedAt.get(n)
+      if (since !== undefined && now - since < DURATION.slow) return true
+    }
+    return false
+  }
+  const backdrop = (el: Element) => {
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const bg = getComputedStyle(n).backgroundColor
+      if (bg && bg !== 'transparent' && !/rgba\(.*,\s*0\)$/.test(bg)) return short(bg)
+      if (n === canvasEl) break
+    }
+    return '#fff'
+  }
+  const makePatch = (base: Element, tree: Element): string | null => {
+    const roots: Node[] = []
+    diffRoots(base, tree, roots)
+    if (!roots.length) return null
+    const node = commonRoot(roots, tree)
+    if (!node) return null
+    // Вне заплатки ничего не должно сдвинуться: окно по центру меняет место,
+    // когда в нём меньше строк, — тогда отличие не только в поддереве.
+    const still = (a: Node, b2: Node): boolean => {
+      if (b2 === node) return true
+      const ra = rects.get(a)
+      const rb = rects.get(b2)
+      if (ra && rb && (Math.abs(ra.x - rb.x) > 0.5 || Math.abs(ra.y - rb.y) > 0.5 || Math.abs(ra.w - rb.w) > 0.5 || Math.abs(ra.h - rb.h) > 0.5)) return false
+      if (a.childNodes.length !== b2.childNodes.length) return false
+      return [...b2.childNodes].every((c, i) => still(a.childNodes[i], c))
+    }
+    if (!still(base, tree)) return null
+    const el = origin.get(node)
+    const r = rects.get(node)
+    const b = rects.get(follow(base, pathTo(node, tree)) as Node)
+    if (!el || !r || moving(el)) return null
+    const box = b
+      ? { x: Math.min(r.x, b.x), y: Math.min(r.y, b.y), w: Math.max(r.x + r.w, b.x + b.w) - Math.min(r.x, b.x), h: Math.max(r.y + r.h, b.y + b.h) - Math.min(r.y, b.y) }
+      : r
+    // Заплатка лежит поверх всего снимка: если узел накрыт накладкой (окно,
+    // затемнение, меню), она вылезла бы над ней — тогда снимок целиком.
+    const kk = canvasEl.getBoundingClientRect().width / SCENE.width
+    const cb = canvasEl.getBoundingClientRect()
+    const covered = [...canvasEl.querySelectorAll('.sq-appear, .OnbScene__blackout')].some((o) => {
+      if (o.contains(el) || el.contains(o)) return false
+      const q = o.getBoundingClientRect()
+      const ox = (q.left - cb.left) / kk
+      const oy = (q.top - cb.top) / kk
+      return ox < box.x + box.w && box.x < ox + q.width / kk && oy < box.y + box.h && box.y < oy + q.height / kk
+    })
+    if (covered) return null
+    const ownNode = snap(el, null) as Element
+    // Место узла уже задано обёрткой — его внешние поля сдвинули бы его второй раз.
+    ownNode.setAttribute('style', 'margin:0')
+    const own = serializer.serializeToString(ownNode)
+    const n2 = (v: number) => +v.toFixed(2)
+    return (
+      `<div class="${tree.getAttribute('class') ?? ''}">` +
+      `<div style="position:absolute;left:${n2(box.x)}px;top:${n2(box.y)}px;width:${n2(box.w)}px;height:${n2(box.h)}px;background:${backdrop(el)}">` +
+      `<div style="position:absolute;left:${n2(r.x - box.x)}px;top:${n2(r.y - box.y)}px;width:${n2(r.w)}px;height:${n2(r.h)}px">${own}</div></div></div>`
+    )
+  }
 
   // ── ключевые моменты: каждое событие, наведение, нажатие, фокус ──────────
   const marks = new Set<number>([0])
@@ -433,20 +600,34 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   T.focuses.forEach((f) => (marks.add(f.start), marks.add(f.end)))
   const times = [...marks].filter((t) => t < T.total).sort((a, b) => a - b)
 
-  const shots: string[] = []
+  const shots: { html: string; base: number | null }[] = []
   const segments: { shot: number; start: number; end: number; cut: boolean }[] = []
   // Смена состояния и уход строки — резкая, как в сцене (движение даёт сам
   // элемент); наведение и нажатие перетекают, как переход цвета у компонентов.
   const cuts = new Set<number>([0])
   T.events.forEach((e) => (cuts.add(e.at), cuts.add(e.at + APPEAR.exit)))
+  let baseTree: Element | null = null
+  let baseId = -1
   ctrl.seek(loop - 1) // сброс кешей пути курсора: следующая перемотка — назад
   for (let i = 0; i < times.length; i++) {
     ctrl.seek(times[i] + 0.5)
     now = times[i] + 0.5
     trackAppear(canvasEl, times[i], i === 0)
-    const html = snapshot()
-    let id = shots.indexOf(html)
-    if (id === -1) id = shots.push(html) - 1
+    const tree = snapshot()
+    const html = serializer.serializeToString(tree)
+    let id = shots.findIndex((x) => x.base === null && x.html === html)
+    if (id === -1 && baseTree) {
+      const patch = makePatch(baseTree, tree)
+      if (patch && patch.length < html.length * 0.5) {
+        id = shots.findIndex((x) => x.base === baseId && x.html === patch)
+        if (id === -1) id = shots.push({ html: patch, base: baseId }) - 1
+      }
+    }
+    if (id === -1) id = shots.push({ html, base: null }) - 1
+    if (shots[id].base === null) {
+      baseTree = tree
+      baseId = id
+    }
     const start = times[i]
     const end = i + 1 < times.length ? times[i + 1] : resetAt
     const last = segments[segments.length - 1]
@@ -457,17 +638,30 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   const first = segments[0].shot
   segments.push({ shot: first, start: resetAt, end: loop, cut: true })
 
-  // ── путь курсора и круг нажатия: те же часы, шаг 1/30 с ──────────────────
+  // ── путь курсора и круг нажатия: точки снимаются с тех же часов ──────────
   const canvas = ctrl.canvas!
   const rr = root.getBoundingClientRect()
   const cr = canvas.getBoundingClientRect()
   const k = cr.width / 480
   const ox = cr.left - rr.left
   const oy = cr.top - rr.top
-  const samples: { t: number; f: FrameInfo }[] = []
+  // Курсор движется по прямой с кривой `move`, круг нажатия — по `enter`
+  // и `move`: в CSS это те же cubic-bezier, поэтому достаточно опорных точек
+  // (начало и конец каждого пути, каждое нажатие), а не кадров 30 раз в секунду.
+  // Перемотка — строго вперёд: так движок меряет цели путей один раз, как в живой сцене.
+  // Цель пути меряется по разметке предыдущего кадра (как в живой сцене, где
+  // кадры идут часто), поэтому перед началом пути — кадр с актуальной разметкой.
+  const wanted = [
+    0,
+    ...T.moves.flatMap((m) => [m.start - EPS, m.start + EPS, m.end]),
+    ...T.hots.filter((h) => h.state === 'pressed').map((h) => h.start + EPS),
+  ]
+  const posAt = new Map<number, FrameInfo['pos']>()
   ctrl.seek(loop - 1)
-  for (let t = 0; t < resetAt; t += SAMPLE_MS) samples.push({ t, f: ctrl.seek(t) })
-  samples.push({ t: resetAt, f: samples[samples.length - 1].f })
+  for (const t of [...new Set(wanted)].sort((a, b) => a - b)) posAt.set(t, ctrl.seek(t).pos)
+  const start = posAt.get(0)!
+  const legs = T.moves.map((m) => ({ ...m, to: posAt.get(m.end)! }))
+  const presses = T.hots.filter((h) => h.state === 'pressed').map((h) => ({ ...h, pos: posAt.get(h.start + EPS)! }))
   const cursorEl = canvas.querySelector('.OnbScene__cursor') as HTMLElement
   const ccs = getComputedStyle(cursorEl)
   const sr = sceneEl.getBoundingClientRect()
@@ -484,49 +678,92 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   const H = Math.ceil(rr.height)
   const FADE = FEEDBACK.rowHighlight
 
-  // Видимость снимков. Входящий лежит выше (z-index 2) и при наведении
-  // проявляется за `duration/fast` поверх уходящего — так в SVG выглядит
-  // переход цвета; при смене состояния снимок встаёт сразу.
-  const shotRules = shots.map((_, id) => {
+  // Опорные снимки видны и под своими заплатками: их отрезки сливаются.
+  const baseOf = (id: number) => shots[id].base ?? id
+  const baseSegs: typeof segments = []
+  segments.forEach((sg) => {
+    const last = baseSegs[baseSegs.length - 1]
+    if (last && last.shot === baseOf(sg.shot)) last.end = sg.end
+    else baseSegs.push({ ...sg, shot: baseOf(sg.shot) })
+  })
+  const keyframes = (id: number, list: typeof segments, lo: number, hi: number, isPatch: boolean) => {
     const pts: [number, number, number][] = []
-    segments.forEach((s, i) => {
-      if (s.shot !== id) return
+    list.forEach((sg, i) => {
+      if (sg.shot !== id) return
       // Короткий отрезок (нажатие — 100 мс) успевает проявиться только за свою длину.
-      const fadeIn = s.cut ? 0 : Math.min(FADE, s.end - s.start - 2 * EPS)
-      if (s.start <= 0) pts.push([0, 1, 2])
-      else pts.push([s.start - EPS, 0, 1], [s.start, 0, 2], [s.start + fadeIn, 1, 2])
-      const next = segments[i + 1]
-      // Уходящий снимок держится под входящим, пока тот проявляется, но не
-      // дольше, чем до своего следующего появления.
-      const again = segments.slice(i + 1).find((x) => x.shot === id)
-      const hold = Math.min(next ? Math.min(FADE, next.end - next.start) : 0, again ? again.start - s.end - 3 * EPS : Infinity)
-      if (!next) pts.push([loop, 1, 2])
-      else if (next.cut || hold <= 0) pts.push([s.end - EPS, 1, 2], [s.end, 0, 1])
-      else pts.push([s.end - EPS, 1, 2], [s.end, 1, 1], [s.end + hold, 1, 1], [s.end + hold + EPS, 0, 1])
+      const fadeIn = sg.cut ? 0 : Math.min(FADE, sg.end - sg.start - 2 * EPS)
+      // Опорный снимок, пока проявляется, лежит выше всего (z 5): под ним
+      // держится всё уходящее, в том числе заплатки прежнего опорного.
+      const top = isPatch ? hi : 5
+      if (sg.start <= 0) pts.push([0, 1, hi])
+      else if (fadeIn > 0) pts.push([sg.start - EPS, 0, lo], [sg.start, 0, top], [sg.start + fadeIn, 1, top], [sg.start + fadeIn + EPS, 1, hi])
+      else pts.push([sg.start - EPS, 0, lo], [sg.start, 1, hi])
+      const next = list[i + 1]
+      if (!next) {
+        pts.push([loop, 1, hi])
+        return
+      }
+      const span = next.end - next.start
+      // Заплатка уходит на свой опорный снимок — гаснет поверх него.
+      if (isPatch && !next.cut && next.shot === shots[id].base) {
+        const out = Math.min(FADE, span)
+        pts.push([sg.end - EPS, 1, hi], [sg.end, 1, lo], [sg.end + out, 0, lo])
+        return
+      }
+      // Уходящий держится под входящим, пока тот проявляется, но не дольше,
+      // чем до своего следующего появления.
+      const again = list.slice(i + 1).find((x) => x.shot === id)
+      const hold = Math.min(Math.min(FADE, span), again ? again.start - sg.end - 3 * EPS : Infinity)
+      if (next.cut || hold <= 0) pts.push([sg.end - EPS, 1, hi], [sg.end, 0, lo])
+      else pts.push([sg.end - EPS, 1, hi], [sg.end, 1, lo], [sg.end + hold, 1, lo], [sg.end + hold + EPS, 0, lo])
     })
-    if (pts[0][0] > 0) pts.unshift([0, 0, 1])
-    if (pts[pts.length - 1][0] < loop) pts.push([loop, 0, 1])
+    if (pts[0][0] > 0) pts.unshift([0, 0, lo])
+    if (pts[pts.length - 1][0] < loop) pts.push([loop, 0, lo])
     const body = pts.map(([t, o, z]) => `${pct(t)}{opacity:${o};z-index:${z}}`).join('')
     return `.s${id}{animation:k${id} ${loop}ms linear infinite}@keyframes k${id}{${body}}`
-  })
+  }
+  // Видимость снимков. Входящий лежит выше и при наведении проявляется за
+  // `duration/fast` поверх уходящего — так в SVG выглядит переход цвета; при
+  // смене состояния снимок встаёт сразу. Заплатки — слоем выше опорных.
+  const shotRules = shots.map((sh, id) =>
+    sh.base === null ? keyframes(id, baseSegs, 1, 2, false) : keyframes(id, segments, 3, 4, true),
+  )
 
   const tr = (x: number, y: number, s: number) =>
     `translate(${(ox + x * k).toFixed(1)}px,${(oy + y * k).toFixed(1)}px) scale(${s})`
-  const cursorKf: string[] = []
-  const dropKf: string[] = []
-  let prevC = ''
-  let prevD = ''
-  samples.forEach(({ t, f }, i) => {
-    const c = tr(f.pos.x, f.pos.y, f.pressed ? 0.85 : 1)
-    const isLast = i === samples.length - 1
-    if (c !== prevC || isLast) cursorKf.push(`${pct(t)}{transform:${c}}`)
-    prevC = c
-    const d = f.drop ? `transform:${tr(f.drop.x, f.drop.y, f.drop.scale)};opacity:${f.drop.opacity.toFixed(3)}` : 'opacity:0'
-    if (d !== prevD || isLast) dropKf.push(`${pct(t)}{${d}}`)
-    prevD = d
+  // Точки курсора: [время, x, y, масштаб, кривая до следующей точки].
+  const pts: [number, number, number, number, string?][] = [[0, start.x, start.y, 1]]
+  let pos = start
+  const events: { t: number; kind: 'move' | 'press'; i: number }[] = [
+    ...legs.map((_, i) => ({ t: legs[i].start, kind: 'move' as const, i })),
+    ...presses.map((_, i) => ({ t: presses[i].start, kind: 'press' as const, i })),
+  ].sort((a, b) => a.t - b.t)
+  for (const e of events) {
+    if (e.kind === 'move') {
+      const l = legs[e.i]
+      pts.push([l.start, pos.x, pos.y, 1, cssEase('move')], [l.end, l.to.x, l.to.y, 1])
+      pos = l.to
+    } else {
+      const p = presses[e.i]
+      pts.push([p.start - EPS, pos.x, pos.y, 1], [p.start, pos.x, pos.y, SCENE.cursorPress], [p.end - EPS, pos.x, pos.y, SCENE.cursorPress], [p.end, pos.x, pos.y, 1])
+    }
+  }
+  pts.push([resetAt, pos.x, pos.y, 1], [resetAt + EPS, start.x, start.y, 1], [loop, start.x, start.y, 1])
+  const cursorKf = pts.map(([t, x, y, sc, e]) => `${pct(t)}{transform:${tr(x, y, sc)}${e ? `;animation-timing-function:${e}` : ''}}`)
+
+  // Круг нажатия: внешний слой гаснет по `move`, внутренний расходится по `enter`.
+  const dropOp: string[] = ['0%{opacity:0}']
+  const dropTr: string[] = []
+  presses.forEach((p) => {
+    const end = p.start + FEEDBACK.drop
+    dropOp.push(`${pct(p.start - EPS)}{opacity:0}`, `${pct(p.start)}{opacity:${FEEDBACK.dropOpacity};animation-timing-function:${cssEase('move')}}`, `${pct(end)}{opacity:0}`)
+    dropTr.push(
+      `${pct(p.start - EPS)}{transform:${tr(p.pos.x, p.pos.y, 1)}}`,
+      `${pct(p.start)}{transform:${tr(p.pos.x, p.pos.y, 1)};animation-timing-function:${cssEase('enter')}}`,
+      `${pct(end)}{transform:${tr(p.pos.x, p.pos.y, FEEDBACK.dropScale)}}`,
+    )
   })
-  cursorKf.push(`${pct(resetAt + 1)}{transform:${tr(samples[0].f.pos.x, samples[0].f.pos.y, 1)}}`, `100%{transform:${tr(samples[0].f.pos.x, samples[0].f.pos.y, 1)}}`)
-  dropKf.push('100%{opacity:0}')
+  dropOp.push('100%{opacity:0}')
 
   const allKf = `0%{opacity:1}${pct(T.total)}{opacity:1;animation-timing-function:${cssEase('exit')}}${pct(resetAt)}{opacity:0;animation-timing-function:${cssEase('enter')}}${pct(resetAt + BEAT.fadeIn)}{opacity:1}100%{opacity:1}`
 
@@ -545,33 +782,41 @@ async function build(root: HTMLElement, ctrl: SceneController) {
 
   const r = 10 * k
   const style = [
-    '.f{position:absolute;left:0;top:0;opacity:0}',
+    '*{box-sizing:border-box}.f{position:absolute;left:0;top:0;opacity:0}',
     `.all{animation:ka ${loop}ms linear infinite}@keyframes ka{${allKf}}`,
     ...shotRules,
     ...built.animCss,
     `#cu{animation:kc ${loop}ms linear infinite}@keyframes kc{${cursorKf.join('')}}`,
-    `#ri{opacity:0;animation:kd ${loop}ms linear infinite}@keyframes kd{${dropKf.join('')}}`,
-    '@media (prefers-reduced-motion:reduce){.f,#cu,#ri,.all{animation:none}.fin{opacity:1}#cu,#ri{display:none}}',
+    `#rio{opacity:0;animation:kd ${loop}ms linear infinite}@keyframes kd{${dropOp.join('')}}`,
+    `#ri{animation:ke ${loop}ms linear infinite}@keyframes ke{${dropTr.join('')}}`,
+    '@media (prefers-reduced-motion:reduce){.f,#cu,#ri,#rio,.all{animation:none}.fin{opacity:1}#cu,#rio{display:none}}',
     ...cssRules,
   ].join('')
 
   // Финальный кадр для «уменьшить движение» — последний снимок перед затуханием.
   const finalShot = segments[segments.length - 2].shot
+  const fin = new Set([finalShot, baseOf(finalShot)])
   const frames = shots
-    .map((html, id) => `<div class="f s${id}${id === finalShot ? ' fin' : ''}">${html}</div>`)
+    .map((sh, id) => `<div class="f s${id}${fin.has(id) ? ' fin' : ''}">${sh.html}</div>`)
     .join('')
   const stage = `<div class="all" style="position:absolute;z-index:100;left:${sx}px;top:${sy}px;width:${sr.width}px;height:${sr.height}px;overflow:hidden">${frames}</div>`
 
   const svg =
     `<svg xmlns="${SVG_NS}" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    `<style><![CDATA[${await embedFonts(built.glyphs)}${style}]]></style>` +
+    `<style><![CDATA[${FONTS_MARK}${style}]]></style>` +
     `<defs><clipPath id="sc"><rect x="${(sr.left - rr.left).toFixed(2)}" y="${(sr.top - rr.top).toFixed(2)}" width="${sr.width.toFixed(2)}" height="${sr.height.toFixed(2)}"/></clipPath></defs>` +
     `<foreignObject width="${W}" height="${H}"><div xmlns="${XHTML_NS}" style="position:relative;width:${W}px;height:${H}px">${base}${stage}</div></foreignObject>` +
-    `<g class="all" clip-path="url(#sc)"><circle id="ri" r="${r.toFixed(2)}" fill="${ccs.backgroundColor}"/>` +
+    `<g class="all" clip-path="url(#sc)"><g id="rio"><circle id="ri" r="${r.toFixed(2)}" fill="${ccs.backgroundColor}"/></g>` +
     `<circle id="cu" r="${(r - k).toFixed(2)}" fill="${ccs.backgroundColor}" opacity="0.8" stroke="${ccs.borderTopColor}" stroke-width="${(2 * k).toFixed(2)}"/></g></svg>`
 
   frame.remove()
-  return { svg, shots: shots.length, segments: segments.length, bytes: new Blob([svg]).size }
+  return {
+    svg,
+    fonts: fontFaces(built.glyphs),
+    shots: shots.filter((x) => x.base === null).length,
+    patches: shots.filter((x) => x.base !== null).length,
+    segments: segments.length,
+  }
 }
 
 /* ── шрифты ────────────────────────────────────────────────────────────────
@@ -598,14 +843,21 @@ function weightFits(rule: string, weight: string) {
   return b === undefined || Number.isNaN(b) ? a === w : a <= w && w <= b
 }
 
-async function toBase64(buf: ArrayBuffer) {
-  const bytes = new Uint8Array(buf)
-  let bin = ''
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  return btoa(bin)
+/**
+ * Какие файлы шрифтов нужны сцене и какие буквы из каждого: скрипт выгрузки
+ * скачивает их, урезает до этих букв и кладёт в SVG на место `FONTS_MARK`.
+ * Урезанный шрифт весит единицы килобайт вместо десятков.
+ */
+export interface FontFaceNeed {
+  family: string
+  weight: string
+  style: string
+  range: string
+  url: string
+  text: string
 }
 
-async function embedFonts(glyphs: Map<string, Set<string>>) {
+function fontFaces(glyphs: Map<string, Set<string>>): FontFaceNeed[] {
   const faces: { rule: CSSFontFaceRule; base: string }[] = []
   for (const sheet of Array.from(document.styleSheets)) {
     let rules: CSSRuleList
@@ -616,11 +868,9 @@ async function embedFonts(glyphs: Map<string, Set<string>>) {
     }
     for (const r of Array.from(rules)) if (r instanceof CSSFontFaceRule) faces.push({ rule: r, base: sheet.href ?? location.href })
   }
-  const out: string[] = []
-  const done = new Set<string>()
+  const out: FontFaceNeed[] = []
   for (const [key, chars] of glyphs) {
     const [family, weight, style] = key.split('|')
-    const codes = [...chars].map((c) => c.codePointAt(0)!)
     for (const { rule, base } of faces) {
       const fam = rule.style.getPropertyValue('font-family').trim().replace(/^["']|["']$/g, '')
       if (fam !== family) continue
@@ -628,23 +878,13 @@ async function embedFonts(glyphs: Map<string, Set<string>>) {
       if ((rule.style.getPropertyValue('font-style') || 'normal') !== style) continue
       const range = rule.style.getPropertyValue('unicode-range')
       const ranges = parseRanges(range)
-      if (!codes.some((c) => ranges.some(([a, b]) => a <= c && c <= b))) continue
+      const text = [...chars].filter((c) => ranges.some(([a, b]) => a <= c.codePointAt(0)! && c.codePointAt(0)! <= b)).join('')
+      if (!text) continue
       const src = rule.style.getPropertyValue('src')
       const m = src.match(/url\(\s*["']?([^"')]+)["']?\s*\)\s*format\(\s*["']?woff2/) ?? src.match(/url\(\s*["']?([^"')]+)["']?\s*\)/)
       if (!m) continue
-      const url = new URL(m[1], base).href
-      if (done.has(`${fam}|${weight}|${url}`)) continue
-      done.add(`${fam}|${weight}|${url}`)
-      try {
-        const data = m[1].startsWith('data:') ? m[1] : `data:font/woff2;base64,${await toBase64(await (await fetch(url)).arrayBuffer())}`
-        const format = /woff2/.test(m[0]) || m[1].includes('woff2') ? 'woff2' : /\.ttf/.test(m[1]) ? 'truetype' : 'woff'
-        out.push(
-          `@font-face{font-family:"${fam}";font-weight:${weight};font-style:${style};${range ? `unicode-range:${range};` : ''}src:url(${data}) format("${format}")}`,
-        )
-      } catch {
-        // Не скачался файл — текст наберётся запасным шрифтом из стека.
-      }
+      out.push({ family: fam, weight, style, range, url: new URL(m[1], base).href, text })
     }
   }
-  return out.join('')
+  return out
 }

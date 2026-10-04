@@ -34,7 +34,7 @@ export const exportableScenes = Object.entries(modules)
 type ExportWindow = {
   __ONB_EXPORT__?: boolean
   __onbScenes?: SceneController[]
-  __onbExportSvg?: () => Promise<{ svg: string; shots: number; bytes: number }>
+  __onbExportSvg?: () => ReturnType<typeof exportSceneSvg>
 }
 
 export function OnboardingExportPage() {
