@@ -1,4 +1,4 @@
-import { APPEAR, BEAT, DURATION, FEEDBACK, SCENE, cssEase } from './motion'
+import { APPEAR, BEAT, DURATION, FEEDBACK, SCENE, WINDOW, cssEase } from './motion'
 import type { FrameInfo, SceneController } from './OnboardingScene'
 
 /**
@@ -434,7 +434,13 @@ async function build(root: HTMLElement, ctrl: SceneController) {
       const dur = parseFloat(v('--sq-appear-duration')) || DURATION.fast
       const easing = v('--sq-appear-easing') || cssEase('enter')
       const from = `opacity:0;transform:translate3d(${v('--sq-appear-x') || 0},${v('--sq-appear-y') || 0},0) scale(${v('--sq-appear-scale') || 1})`
-      return animClass(`sq:${since}:${from}:${dur}`, () => span(since, dur, from, 'opacity:1;transform:none', easing))
+      // Точка роста едет вместе с анимацией: окно сцены растёт из точки нажатия.
+      const origin = v('--sq-appear-origin')
+      return animClass(
+        `sq:${since}:${from}:${dur}:${origin}`,
+        () => span(since, dur, from, 'opacity:1;transform:none', easing),
+        origin ? `transform-origin:${origin}` : '',
+      )
     }
     if (el.classList.contains('OnbScene__pop') && el.hasAttribute('data-pop')) {
       const hot = T.hots.find((h) => h.state === 'released' && h.start <= now && now < h.end)
@@ -533,7 +539,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
       const busy = h.dataset?.kind === 'result' ? APPEAR.enter + APPEAR.highlight : APPEAR.enter
       if (Number.isFinite(at) && now - at < busy) return true
       const since = appearedAt.get(n)
-      if (since !== undefined && now - since < DURATION.slow) return true
+      if (since !== undefined && now - since < Math.max(DURATION.slow, WINDOW.enter)) return true
     }
     return false
   }

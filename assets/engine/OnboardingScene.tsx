@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { flushSync } from 'react-dom'
 import type { CSSProperties, ReactNode } from 'react'
 import { ModalActionBar, ModalHeader } from '@/components/square/Modal'
 import { Blackout } from '@/components/square/Blackout'
-import { APPEAR, BEAT, FEEDBACK, SCENE, cssEase, ease } from './motion'
+import { APPEAR, BEAT, FEEDBACK, SCENE, WINDOW, cssEase, ease } from './motion'
 import { compile, stateAt, stepAt } from './story'
 import type { HotState, Story, Timeline } from './story'
 import './onboarding.css'
@@ -38,9 +38,17 @@ interface SceneContextValue {
    * свои фазы без таймеров: выгрузка снимает их на нужных моментах.
    */
   clock: number | null
+  /** Точка последнего нажатия, px холста: из неё вырастает окно сцены. */
+  press: Point | null
 }
 
-const SceneContext = createContext<SceneContextValue>({ hot: null, focus: null, animate: false, clock: null })
+const SceneContext = createContext<SceneContextValue>({
+  hot: null,
+  focus: null,
+  animate: false,
+  clock: null,
+  press: null,
+})
 
 /** Цели внутри строки `SceneAppear` — по ним строка узнаёт, что нажали в ней. */
 const ItemContext = createContext<Set<string> | null>(null)
@@ -73,6 +81,8 @@ const MOTION_VARS = {
   '--onb-pop-scale': String(FEEDBACK.popScale),
   '--onb-row-duration': `${FEEDBACK.rowHighlight}ms`,
   '--onb-ease-move': cssEase('move'),
+  '--onb-window-duration': `${WINDOW.enter}ms`,
+  '--onb-window-scale': String(WINDOW.scale),
 } as CSSProperties
 
 type Phase = 'play' | 'out' | 'in'
@@ -99,6 +109,7 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
   const [focus, setFocus] = useState<string | null>(null)
   const [phase, setPhase] = useState<Phase>('play')
   const [clock, setClock] = useState<number | null>(null)
+  const [press, setPress] = useState<Point | null>(null)
 
   const canvasRef = useRef<HTMLDivElement>(null)
   const cursorRef = useRef<HTMLDivElement>(null)
@@ -112,7 +123,7 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
       setPhase('play')
       return
     }
-    const setters = { setStep, setHot, setFocus, setPhase, setClock }
+    const setters = { setStep, setHot, setFocus, setPhase, setClock, setPress }
     // Выгрузка в SVG ведёт время сама: часы не идут, сцена отдаёт перемотку.
     if (exporting) return registerForExport(timeline, canvasRef, cursorRef, rippleRef, setters)
     return runClock(timeline, canvasRef, cursorRef, rippleRef, setters)
@@ -120,8 +131,14 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
 
   const state = useMemo(() => stateAt(story, timeline, step), [story, timeline, step])
   const context = useMemo<SceneContextValue>(
-    () => ({ hot, focus, animate: !still && !exporting && phase === 'play', clock: exporting ? clock : null }),
-    [hot, focus, still, phase, clock],
+    () => ({
+      hot,
+      focus,
+      animate: !still && !exporting && phase === 'play',
+      clock: exporting ? clock : null,
+      press,
+    }),
+    [hot, focus, still, phase, clock, press],
   )
 
   const fade: CSSProperties =
@@ -170,6 +187,7 @@ interface Setters {
   setFocus: (target: string | null) => void
   setPhase: (phase: Phase) => void
   setClock: (t: number | null) => void
+  setPress: (point: Point) => void
 }
 
 type Point = { x: number; y: number }
@@ -197,6 +215,7 @@ function createFrame<S>(
   let origins: Point[] = []
   let prev = { step: -1, hot: '', focus: '', phase: '' }
   let dropAt: { start: number; x: number; y: number } | null = null
+  let pressedAt = -1
   let lastT = Infinity
 
   const measure = (target: string): Point | null => {
@@ -252,6 +271,21 @@ function createFrame<S>(
         pos = { x: origins[i].x + (to.x - origins[i].x) * k, y: origins[i].y + (to.y - origins[i].y) * k }
       })
     }
+    // Точка последнего нажатия — для окна, которое из неё вырастает. Берётся
+    // цель пути, а не курсор сейчас: перемотка выгрузки может попасть в момент,
+    // когда курсор уже едет к следующей цели.
+    const lastPress = playing
+      ? timeline.hots.findLast((h) => h.state === 'pressed' && h.start <= t)
+      : undefined
+    if (lastPress && lastPress.start !== pressedAt) {
+      const i = timeline.moves.findLastIndex((m) => m.start <= lastPress.start)
+      const point = i >= 0 ? (resolved[i] ?? origins[i]) : null
+      if (point) {
+        pressedAt = lastPress.start
+        set.setPress(point)
+      }
+    }
+
     const pressed = hot?.state === 'pressed'
     if (cursorRef.current) {
       cursorRef.current.style.transform = `translate(${pos.x}px, ${pos.y}px) scale(${pressed ? SCENE.cursorPress : 1})`
@@ -524,14 +558,27 @@ export interface SceneWindowProps {
  * Модалка в сцене. `Modal` из ДС не подходит сам: он выносит окно порталом
  * в `body` и затемняет весь вьюпорт. Здесь тот же каркас — `Blackout`,
  * `ModalHeader`, `ModalActionBar` и класс окна `Modal`, — но в границах
- * холста. Появление — родная анимация накладок ДС, уход — `APPEAR.exit`.
+ * холста. Появление — та же анимация накладок ДС, но окно вырастает из точки
+ * нажатия и идёт дольше (`WINDOW` в motion.ts); уход — `APPEAR.exit`.
  */
 export function SceneWindow({ open, label, actions, children }: SceneWindowProps) {
   const { phase, at } = useAppear(open)
+  const { press } = useContext(SceneContext)
+  const windowRef = useRef<HTMLDivElement>(null)
+
+  // Окно растёт из точки нажатия: точка масштаба — нажатие в координатах
+  // окна. Ставится до первого кадра, иначе окно успеет дёрнуться от центра.
+  // offsetLeft/Top не видят анимации масштаба — меряется место окна в раскладке.
+  useLayoutEffect(() => {
+    const el = windowRef.current
+    if (!el || !press) return
+    el.style.setProperty('--sq-appear-origin', `${press.x - el.offsetLeft}px ${press.y - el.offsetTop}px`)
+  }, [phase, press])
+
   if (phase === 'hidden') return null
   return (
     <Blackout className="OnbScene__blackout" data-phase={phase} data-at={at}>
-      <div className="Modal sq-appear sq-appear--dialog OnbScene__window" data-width="extraSmall">
+      <div ref={windowRef} className="Modal sq-appear sq-appear--dialog OnbScene__window" data-width="extraSmall">
         <ModalHeader label={label} onClose={() => {}} />
         <div className="Modal__content">{children}</div>
         {actions && <ModalActionBar>{actions}</ModalActionBar>}

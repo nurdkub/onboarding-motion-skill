@@ -197,6 +197,20 @@
   z-index: 100;
 }
 
+/* Окно сцены проявляется дольше родного и вырастает из точки нажатия
+   (`WINDOW` в motion.ts): в миниатюре родные 200 мс проскакивают, и не видно,
+   что окно открыл клик. Точку роста ставит SceneWindow. Два класса — чтобы
+   перебить `.sq-appear` и `.sq-appear--dialog` без оглядки на порядок файлов. */
+.OnbScene__blackout.sq-appear {
+  --sq-appear-duration: var(--onb-window-duration);
+}
+
+.OnbScene__window.sq-appear {
+  --sq-appear-duration: var(--onb-window-duration);
+  --sq-appear-scale: var(--onb-window-scale);
+  --sq-appear-y: 0px;
+}
+
 .OnbScene__blackout[data-phase="exiting"] {
   animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
 }
