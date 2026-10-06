@@ -83,6 +83,7 @@ const MOTION_VARS = {
   '--onb-ease-move': cssEase('move'),
   '--onb-window-duration': `${WINDOW.enter}ms`,
   '--onb-window-scale': String(WINDOW.scale),
+  '--onb-ease-reveal': cssEase('reveal'),
 } as CSSProperties
 
 type Phase = 'play' | 'out' | 'in'

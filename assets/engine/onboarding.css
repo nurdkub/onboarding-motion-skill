@@ -203,10 +203,12 @@
    перебить `.sq-appear` и `.sq-appear--dialog` без оглядки на порядок файлов. */
 .OnbScene__blackout.sq-appear {
   --sq-appear-duration: var(--onb-window-duration);
+  --sq-appear-easing: var(--onb-ease-reveal);
 }
 
 .OnbScene__window.sq-appear {
   --sq-appear-duration: var(--onb-window-duration);
+  --sq-appear-easing: var(--onb-ease-reveal);
   --sq-appear-scale: var(--onb-window-scale);
   --sq-appear-y: 0px;
 }
