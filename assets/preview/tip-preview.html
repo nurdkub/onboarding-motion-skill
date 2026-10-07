@@ -137,20 +137,20 @@ body {
 /* ── примитивы движка: те же правила, что в onboarding.css — не менять ── */
 .appear { position: relative; }
 .dropdown.appear { position: absolute; }
-.appear[data-phase="entering"] { animation: onb-enter 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
-.appear[data-phase="exiting"] { animation: onb-exit 200ms cubic-bezier(0.7, 0, 0.84, 0) both; }
+.appear[data-phase="entering"] { animation: onb-enter 500ms var(--onb-smooth) both; }
+.appear[data-phase="exiting"] { animation: onb-exit 300ms var(--onb-smooth) both; }
 @keyframes onb-enter { from { opacity: 0; transform: translate3d(0, -4px, 0); } to { opacity: 1; transform: none; } }
 @keyframes onb-exit { from { opacity: 1; } to { opacity: 0; } }
 .appear[data-kind="result"][data-phase="entering"]::after {
   content: ""; position: absolute; inset: 0; background: var(--accent-tint);
   mix-blend-mode: multiply; pointer-events: none;
-  animation: onb-highlight 1200ms cubic-bezier(0.16, 1, 0.3, 1) 300ms both;
+  animation: onb-highlight 1200ms var(--onb-smooth) 500ms both;
 }
 @keyframes onb-highlight { from { opacity: 1; } to { opacity: 0; } }
 .pop { background-color: transparent; transition: background-color 200ms; }
 .pop[data-row-state="hovered"] { background-color: var(--row-hover); }
 .pop[data-row-state="pressed"] { background-color: var(--row-pressed); }
-.pop[data-pop] { animation: onb-pop 450ms cubic-bezier(0.65, 0, 0.35, 1) both; }
+.pop[data-pop] { animation: onb-pop 450ms var(--onb-smooth) both; }
 @keyframes onb-pop { 0% { transform: scale(1); } 40% { transform: scale(1.02); } 100% { transform: scale(1); } }
 .ripple {
   position: absolute; top: 0; left: 0; width: 20px; height: 20px; margin: -10px 0 0 -10px;
@@ -236,21 +236,21 @@ body {
 const BEAT = { leadIn: 600, move: 600, hover: 200, press: 100, release: 450, dwell: 800,
   typeFocus: 150, typeChar: 100, typeSettle: 400, react: 400, hold: 1800,
   fadeOut: 300, fadeIn: 300, loopGap: 400 };
-const APPEAR = { enter: 300, exit: 200 };
+const APPEAR = { enter: 500, exit: 300 };
 const FEEDBACK = { drop: 400, dropScale: 2, dropOpacity: 0.35 };
 const SCENE = { scale: 0.9, cursorStart: { x: 333, y: 217 }, cursorPress: 0.85 };
 const LIMITS = { loop: 8000, loopMax: 9000, actions: 5, typeChars: 12 };
 const OPEN_DELAY = 250;
-const EASE = { enter: [0.16, 1, 0.3, 1], exit: [0.7, 0, 0.84, 0], move: [0.65, 0, 0.35, 1] };
-const cssEase = (n) => `cubic-bezier(${EASE[n].join(', ')})`;
-function ease(name, t) {
-  const [x1, y1, x2, y2] = EASE[name];
+/* Движение — одна пружина Apple .smooth (период 0,5 с, без отскока), как SPRING в motion.ts.
+   Форма растянута под длительность: за отведённое время садится на 99 % — одна запись на всё. */
+function smoothAt(t) {
   if (t <= 0) return 0; if (t >= 1) return 1;
-  const bez = (a, b, s) => 3 * a * s * (1 - s) ** 2 + 3 * b * s ** 2 * (1 - s) + s ** 3;
-  let lo = 0, hi = 1, s = t;
-  for (let i = 0; i < 24; i++) { s = (lo + hi) / 2; if (bez(x1, x2, s) < t) lo = s; else hi = s; }
-  return bez(y1, y2, s);
+  const k = 2 * Math.PI; return 1 - Math.exp(-k * t) * (1 + k * t);
 }
+const SMOOTH = `linear(${Array.from({ length: 41 }, (_, i) => i === 40 ? 1 : +smoothAt(i / 40).toFixed(4)).join(', ')})`;
+document.documentElement.style.setProperty('--onb-smooth', SMOOTH);
+const cssEase = () => SMOOTH;
+function ease(_name, t) { return smoothAt(t); }
 
 /* ── МЕНЯТЬ: данные и сценарий. Шаги — click, type, point, react, без длительностей ── */
 const COMPANIES = [
@@ -264,7 +264,7 @@ const story = {
   initial: { open: false, query: '', chip: false },
   beats: [
     { kind: 'click', target: 'recipients', apply: (s) => ({ ...s, open: true }) },
-    { kind: 'type', target: 'recipients', text: QUERY, apply: (s, query) => ({ ...s, query }) },
+    { kind: 'type', target: 'recipients', text: QUERY, focused: true, apply: (s, query) => ({ ...s, query }) },
     { kind: 'click', target: 'pick', apply: (s) => ({ ...s, open: false, query: '', chip: true }) },
   ],
 };
@@ -290,6 +290,12 @@ function compile(story) {
     } else if (b.kind === 'type') {
       actions++;
       if (b.text.length > LIMITS.typeChars) problems.push(`Печать «${b.text}» длиннее ${LIMITS.typeChars} символов`);
+      // В поле сначала нажимают — как в движке; { focused: true } — поле уже в фокусе.
+      if (!b.focused) {
+        moves.push({ start: t, end: t + BEAT.move, target: b.target }); t += BEAT.move;
+        hots.push({ start: t, end: t + BEAT.hover, target: b.target, state: 'hovered' }); t += BEAT.hover;
+        hots.push({ start: t, end: t + BEAT.press, target: b.target, state: 'pressed' }); t += BEAT.press;
+      }
       closeFocus(t); openFocus = { start: t, target: b.target }; t += BEAT.typeFocus;
       for (let i = 1; i <= b.text.length; i++) {
         const typed = b.text.slice(0, i);

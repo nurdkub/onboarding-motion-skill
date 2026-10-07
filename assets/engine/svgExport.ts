@@ -305,7 +305,7 @@ async function build(root: HTMLElement, ctrl: SceneController) {
   const snap = (el: Element, parent: CSSStyleDeclaration | null): Node | null => {
     if (el === skipNode) return null
     if (el instanceof HTMLElement) {
-      if (el.matches('.OnbScene__cursor, .OnbScene__ripple, .OnbScene__problems')) return null
+      if (el.matches('.OnbScene__cursor, .OnbScene__ripple, .OnbScene__problems, .OnbScene__measure, .OnbScene__ghost, .OnbScene__cue')) return null
       if (getComputedStyle(el).display === 'none') return null
     }
     if (el instanceof SVGSVGElement && el.parentElement?.namespaceURI === XHTML_NS) return svgIcon(el, parent)

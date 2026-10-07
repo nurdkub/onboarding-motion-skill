@@ -31,7 +31,7 @@ export const story = defineStory<State>({
   initial: { modal: false, query: '', picked: false, chip: false },
   beats: [
     click('picker', (s) => ({ ...s, modal: true })),
-    type('search', PICK.dgName, (s, query) => ({ ...s, query })),
+    type('search', PICK.dgName, (s, query) => ({ ...s, query }), { focused: true }),
     click('pick', (s) => ({ ...s, picked: true })),
     click('ok', (s) => ({ ...s, modal: false, chip: true })),
   ],

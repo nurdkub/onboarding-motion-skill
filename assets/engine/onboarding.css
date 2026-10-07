@@ -27,6 +27,18 @@
   overflow: hidden;
 }
 
+/* Содержимое по центру по вертикали (`ScenePlane center`): группа держит
+   ритм плоскости, а её сдвиг при росте ведёт SceneCentered. */
+.OnbScene__plane[data-center] {
+  justify-content: center;
+}
+
+.OnbScene__centered {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-06);
+}
+
 /* Белая плоскость — экран в миниатюре, во всё окошко. Поле плоскости — paddings/08. */
 .OnbScene__plane {
   box-sizing: border-box;
@@ -97,6 +109,177 @@
   background: var(--colors-icon-neutral-tertiaryHovered);
 }
 
+/* ── значок у курсора: чем нажимают ───────────────────────────────────────
+ * Клавиша (`clickWith`) и мышь (`rightClick`). Это графика сцены, как сам
+ * курсор: в продукте её нет, глифа «мышь с правой кнопкой» в material-icons
+ * нет тоже. Место — у острия курсора, transform ставят часы сцены, они же
+ * ставят `data-pressed` в момент нажатия. Появляется той же пружиной, что
+ * окно: значок должен «прилететь», а не тихо проявиться (06.10.2026).
+ */
+.OnbScene__cue {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 201;
+  pointer-events: none;
+}
+
+.OnbScene__keys,
+.OnbScene__mouse {
+  position: absolute;
+  inset-block-start: 24px;
+  inset-inline-start: 14px;
+  transform-origin: 0 0;
+  animation: onb-cue-in var(--onb-window-duration) var(--onb-window-easing) both;
+}
+
+@keyframes onb-cue-in {
+  from {
+    opacity: 0;
+    scale: 0.4;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+
+/* Клавиши появляются пружиной окна (сам контейнер), клавиша внутри — без своей анимации. */
+.OnbScene__keys .OnbScene__key {
+  position: static;
+  animation: none;
+}
+
+/* Мышь узнаётся по форме сразу — появляется быстрее клавиши, за duration/fast. */
+.OnbScene__mouse {
+  animation-duration: var(--onb-exit-duration);
+  animation-timing-function: var(--onb-ease-enter);
+}
+
+/* Уход значка — последние APPEAR.exit его отрезка (`data-leaving` ставят часы). */
+.OnbScene__cue[data-leaving] .OnbScene__keys,
+.OnbScene__cue[data-leaving] .OnbScene__mouse {
+  animation: onb-cue-out var(--onb-exit-duration) var(--onb-ease-exit) both;
+}
+
+@keyframes onb-cue-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.6;
+  }
+}
+
+/* Несколько клавиш (`Ctrl+V`) — рядом, как их зажимают. */
+.OnbScene__keys {
+  display: flex;
+  gap: var(--gap-02);
+}
+
+/* Клавиша — как на клавиатуре: широкая, с подписью и «глубиной» снизу.
+   Нажатие — клавиша опускается на 2 px, глубина уходит, фон темнеет. */
+.OnbScene__key {
+  display: flex;
+  align-items: center;
+  gap: var(--gap-03);
+  justify-content: center;
+  min-inline-size: 40px;
+  block-size: 40px;
+  box-sizing: border-box;
+  padding-inline: var(--paddings-04);
+  border: var(--borderWidth-default) solid var(--colors-border-neutral-secondary);
+  border-radius: var(--borderRadius-button);
+  background: var(--colors-surface-onColor-neutral-primary);
+  color: var(--colors-text-neutral-primary);
+  box-shadow: 0 4px 0 var(--colors-border-neutral-secondary);
+  transition:
+    translate var(--onb-press-duration) var(--onb-ease-move),
+    box-shadow var(--onb-press-duration) var(--onb-ease-move),
+    background-color var(--onb-press-duration) var(--onb-ease-move);
+}
+
+.OnbScene__key[data-pressed] {
+  translate: 0 3px;
+  box-shadow: 0 1px 0 var(--colors-border-neutral-secondary);
+  background: var(--colors-surface-neutral-tertiaryPressed);
+}
+
+/* Мышь: корпус с колёсиком, правая кнопка пульсирует акцентом — «нажмут
+   эту». В момент нажатия кнопка заливается целиком и от неё расходится
+   волна — то же «нажатие случилось», что круг у курсора. */
+.OnbScene__mouse {
+  inline-size: 26px;
+  block-size: 38px;
+  box-sizing: border-box;
+  border: var(--borderWidth-bold) solid var(--colors-icon-neutral-primary);
+  border-radius: 13px;
+  overflow: hidden;
+  background:
+    linear-gradient(var(--colors-icon-neutral-primary), var(--colors-icon-neutral-primary))
+      center top / var(--borderWidth-bold) 42% no-repeat,
+    linear-gradient(var(--colors-icon-neutral-primary), var(--colors-icon-neutral-primary))
+      center 42% / 100% var(--borderWidth-bold) no-repeat,
+    var(--colors-surface-onColor-neutral-primary);
+}
+
+.OnbScene__mouseButton {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-end: 0;
+  inline-size: calc(50% - 1px);
+  block-size: calc(42% - 1px);
+  background: var(--colors-icon-accent-primary);
+  animation: onb-mouse-hint var(--onb-enter-duration) var(--onb-ease-move) infinite alternate;
+}
+
+@keyframes onb-mouse-hint {
+  from {
+    opacity: 0.25;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.OnbScene__cue[data-pressed] .OnbScene__mouseButton {
+  animation: none;
+  opacity: 1;
+  background: var(--colors-icon-accent-primaryPressed);
+}
+
+/* Волна от правой кнопки в момент нажатия. Снаружи корпуса — у корпуса
+   overflow: hidden, поэтому волна висит на самом значке-обёртке. */
+.OnbScene__cue[data-kind="right"]::after {
+  content: "";
+  position: absolute;
+  inset-block-start: 24px;
+  inset-inline-start: 27px;
+  inline-size: 13px;
+  block-size: 16px;
+  border-radius: 50%;
+  border: var(--borderWidth-bold) solid var(--colors-icon-accent-primary);
+  opacity: 0;
+  pointer-events: none;
+}
+
+.OnbScene__cue[data-kind="right"][data-pressed]::after {
+  animation: onb-mouse-wave var(--onb-pop-duration) var(--onb-ease-enter) both;
+}
+
+@keyframes onb-mouse-wave {
+  from {
+    opacity: 0.9;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 2.6;
+  }
+}
+
 /* Отклик строки: подрастает и возвращается. Атрибут появляется на такт
    `release` — анимация запускается заново при каждом нажатии. */
 @keyframes onb-pop {
@@ -165,6 +348,13 @@
 
 .OnbScene__appear {
   position: relative;
+  /* Сетка в одну строку — чтобы строку можно было схлопнуть при уходе. */
+  display: grid;
+  grid-template-rows: 1fr;
+}
+
+.OnbScene__appear > .OnbScene__pop {
+  min-block-size: 0;
 }
 
 .OnbScene__appear[data-phase="entering"] {
@@ -172,7 +362,22 @@
 }
 
 .OnbScene__appear[data-phase="exiting"] {
-  animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
+  animation:
+    onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both,
+    onb-collapse var(--onb-collapse-duration) var(--onb-ease-move) var(--onb-exit-duration) both;
+}
+
+.OnbScene__appear[data-phase="exiting"] > .OnbScene__pop {
+  overflow: hidden;
+}
+
+@keyframes onb-collapse {
+  from {
+    grid-template-rows: 1fr;
+  }
+  to {
+    grid-template-rows: 0fr;
+  }
 }
 
 /* Подсветка результата: акцентная заливка поверх, режим multiply — белое
@@ -201,20 +406,35 @@
    (`WINDOW` в motion.ts): в миниатюре родные 200 мс проскакивают, и не видно,
    что окно открыл клик. Точку роста ставит SceneWindow. Два класса — чтобы
    перебить `.sq-appear` и `.sq-appear--dialog` без оглядки на порядок файлов. */
+/* Затемнение — по ровной кривой, а не пружиной окна: у прозрачности перелёт
+   срезается в 1, и пружина читалась резким включением. */
 .OnbScene__blackout.sq-appear {
   --sq-appear-duration: var(--onb-window-duration);
-  --sq-appear-easing: var(--onb-ease-reveal);
+  --sq-appear-easing: var(--onb-ease-move);
 }
 
 .OnbScene__window.sq-appear {
   --sq-appear-duration: var(--onb-window-duration);
-  --sq-appear-easing: var(--onb-ease-reveal);
+  --sq-appear-easing: var(--onb-window-easing);
   --sq-appear-scale: var(--onb-window-scale);
   --sq-appear-y: 0px;
 }
 
+/* Закрытие — обратное открытию: окно сжимается в точку, из которой выросло,
+   и гаснет; затемнение тает вместе с ним, ровно, без обрыва (WINDOW.exit). */
 .OnbScene__blackout[data-phase="exiting"] {
-  animation: onb-exit var(--onb-exit-duration) var(--onb-ease-exit) both;
+  animation: onb-exit var(--onb-window-exit) var(--onb-ease-move) both;
+}
+
+.OnbScene__blackout[data-phase="exiting"] .OnbScene__window {
+  animation: onb-window-out var(--onb-window-exit) var(--onb-ease-exit) both;
+}
+
+@keyframes onb-window-out {
+  to {
+    opacity: 0;
+    transform: scale(var(--onb-window-scale));
+  }
 }
 
 /* Окно всегда внутри холста с полями: у `Modal` ширина фиксированная, а его
@@ -289,4 +509,273 @@
   .OnbScene__blackout {
     animation: none !important;
   }
+}
+
+/* ── колесо мыши (`scroll`) ────────────────────────────────────────────── */
+
+/* Колесо — акцентная полоска по центру верхней половины; пока содержимое
+   едет (`data-pressed`), она бежит вниз — «крутят на себя». */
+.OnbScene__mouseWheel {
+  position: absolute;
+  inset-block-start: 4px;
+  inset-inline-start: calc(50% - 2px);
+  inline-size: 4px;
+  block-size: 8px;
+  border-radius: 2px;
+  background: var(--colors-icon-accent-primary);
+}
+
+.OnbScene__cue[data-pressed] .OnbScene__mouseWheel {
+  animation: onb-wheel var(--onb-enter-duration) linear infinite;
+}
+
+@keyframes onb-wheel {
+  from {
+    translate: 0 -3px;
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+  to {
+    translate: 0 5px;
+    opacity: 0.3;
+  }
+}
+
+/* ── перенос (`drag`) ──────────────────────────────────────────────────── */
+
+/* Копия источника у курсора: чуть приподнята — тень и лёгкий наклон, как
+   у карточки, которую держат. Литерал тени — та же тень, что у Modal. */
+.OnbScene__ghost {
+  position: absolute;
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  z-index: 198;
+  margin-block-start: -12px;
+  margin-inline-start: -12px;
+  pointer-events: none;
+  opacity: 0;
+  rotate: -2deg;
+  background: var(--colors-surface-onColor-neutral-primary);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.12);
+}
+
+.OnbScene__ghost[data-active] {
+  opacity: 0.92;
+}
+
+/* Источник, пока его несут, бледнеет — видно, откуда взяли. */
+[data-scene-target][data-dragging] {
+  opacity: 0.35;
+}
+
+/* ── боковая панель ────────────────────────────────────────────────────── */
+
+/* Строка шире холста: экран во всю ширину и панель справа за краем.
+   Сдвиг строки влево вводит панель и уводит левую часть экрана за край. */
+.OnbScene__panelRow {
+  display: flex;
+  block-size: 100%;
+}
+
+.OnbScene__panelMain {
+  flex: none;
+  block-size: 100%;
+}
+
+.OnbScene__panel {
+  flex: none;
+  box-sizing: border-box;
+  block-size: 100%;
+  padding: var(--paddings-07);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap-05);
+  background: var(--colors-surface-onColor-neutral-primary);
+  border-inline-start: var(--borderWidth-default) solid var(--colors-border-neutral-tertiaryDefault);
+}
+
+/* ── смена экрана ──────────────────────────────────────────────────────── */
+
+.OnbScene__screens {
+  position: relative;
+  block-size: 100%;
+}
+
+.OnbScene__screen {
+  position: absolute;
+  inset: 0;
+}
+
+.OnbScene__screen[data-phase="entering"] {
+  animation: onb-screen-in var(--onb-enter-duration) var(--onb-ease-enter) both;
+}
+
+.OnbScene__screen[data-phase="exiting"] {
+  animation: onb-screen-out var(--onb-exit-duration) var(--onb-ease-exit) both;
+}
+
+@keyframes onb-screen-in {
+  from {
+    opacity: 0;
+    translate: 24px 0;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+@keyframes onb-screen-out {
+  from {
+    opacity: 1;
+    translate: 0 0;
+  }
+  to {
+    opacity: 0;
+    translate: -24px 0;
+  }
+}
+
+/* ── каретка в поле ────────────────────────────────────────────────────── */
+
+/* Мигающая черта в конце текста поля в фокусе. Место ставит SceneTarget,
+   мигание — шаг без перехода, как у системной каретки. */
+.OnbScene__target {
+  position: relative;
+}
+
+.OnbScene__caret {
+  position: absolute;
+  inline-size: 2px;
+  background: var(--colors-text-neutral-primary);
+  pointer-events: none;
+  animation: onb-caret var(--onb-caret-blink) step-end infinite;
+}
+
+@keyframes onb-caret {
+  from {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* ── курсор изменения ширины ───────────────────────────────────────────── */
+
+/* Над краем, который тянут, курсор — двусторонняя стрелка с чертой, как
+   col-resize в системе. Точка касания — центр знака, а не остриё. */
+.OnbScene__cursor[data-shape="resize"] {
+  inline-size: 24px;
+  block-size: 16px;
+  margin-inline-start: -12px;
+  margin-block-start: -8px;
+}
+
+.OnbScene__cursor[data-shape="resize"]::before {
+  clip-path: polygon(
+    0 50%, 28% 5%, 28% 38%, 44% 38%, 44% 0, 56% 0, 56% 38%, 72% 38%, 72% 5%, 100% 50%,
+    72% 95%, 72% 62%, 56% 62%, 56% 100%, 44% 100%, 44% 62%, 28% 62%, 28% 95%
+  );
+}
+
+/* ── смена значения на месте (`SceneSwap`, `SceneCounter`) ──────────────── */
+
+.OnbScene__swap {
+  position: relative;
+  display: inline-grid;
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.OnbScene__swap > * {
+  grid-area: 1 / 1;
+}
+
+.OnbScene__swap[data-changed] {
+  animation: onb-swap-pop var(--onb-window-duration) var(--onb-window-easing-spring) both;
+}
+
+.OnbScene__swapOld {
+  animation: onb-swap-out var(--onb-exit-duration) var(--onb-ease-exit) both;
+}
+
+.OnbScene__swap[data-changed] .OnbScene__swapNew {
+  animation: onb-swap-in var(--onb-enter-duration) var(--onb-ease-enter) both;
+}
+
+@keyframes onb-swap-out {
+  to {
+    translate: 0 -100%;
+    opacity: 0;
+  }
+}
+
+@keyframes onb-swap-in {
+  from {
+    translate: 0 100%;
+    opacity: 0;
+  }
+}
+
+@keyframes onb-swap-pop {
+  from {
+    scale: 0.6;
+  }
+  to {
+    scale: 1;
+  }
+}
+
+/* ── заполнение и подрастание (`SceneFill`, `ScenePop`) ───────────────── */
+
+.OnbScene__fill {
+  position: relative;
+  overflow: hidden;
+}
+
+.OnbScene__fillBar {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-start: 0;
+  background: var(--colors-icon-accent-primary);
+}
+
+.OnbScene__popOnce {
+  display: inline-flex;
+}
+
+.OnbScene__popOnce[data-pop] {
+  animation: onb-pop-once var(--onb-pop-duration) var(--onb-ease-move) both;
+}
+
+@keyframes onb-pop-once {
+  40% {
+    scale: 1.12;
+  }
+}
+
+/* Невидимый слой с финальным кадром — по нему меряют высоту центрированной
+   группы (`ScenePlane center`). Того же размера, что холст, ни на что не влияет. */
+.OnbScene__measure {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Строка меню, обёрнутая целью сцены, растягивается, как строки DropdownSlot. */
+.DropdownSlot > .OnbScene__target > :not(.Divider) {
+  justify-content: flex-start;
+  inline-size: 100%;
+}
+
+/* Знак Shift — контур стрелки вверх, вектором (см. OnboardingScene). */
+.OnbScene__shiftSvg {
+  flex: none;
+  inline-size: 15px;
+  block-size: 15px;
 }
