@@ -242,10 +242,12 @@ const SCENE = { scale: 0.9, cursorStart: { x: 333, y: 217 }, cursorPress: 0.85 }
 const LIMITS = { loop: 8000, loopMax: 9000, actions: 5, typeChars: 12 };
 const OPEN_DELAY = 250;
 /* Движение — одна пружина Apple .smooth (период 0,5 с, без отскока), как SPRING в motion.ts.
-   Форма растянута под длительность: за отведённое время садится на 99 % — одна запись на всё. */
+   Форма растянута под длительность и нормирована: к концу времени — ровно конец пути. */
 function smoothAt(t) {
   if (t <= 0) return 0; if (t >= 1) return 1;
-  const k = 2 * Math.PI; return 1 - Math.exp(-k * t) * (1 + k * t);
+  // Нормировка на значение в конце (≈ 0,986): иначе последний кадр прыгал бы к 1.
+  const k = 2 * Math.PI, raw = (x) => 1 - Math.exp(-k * x) * (1 + k * x);
+  return raw(t) / raw(1);
 }
 const SMOOTH = `linear(${Array.from({ length: 41 }, (_, i) => i === 40 ? 1 : +smoothAt(i / 40).toFixed(4)).join(', ')})`;
 document.documentElement.style.setProperty('--onb-smooth', SMOOTH);

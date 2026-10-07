@@ -28,7 +28,7 @@
  * Роли остаются по имени — `enter` (появление), `exit` (уход), `move` (путь
  * курсора, перемещение на экране), — но форма у них одна. Форма пружины не
  * зависит от длительности: она растянута так, что за отведённое время
- * успевает сесть (99 % пути), поэтому одна запись `linear()` годится для
+ * успевает сесть (98,6 % пути, остаток снимает нормировка в `smoothAt`), поэтому одна запись `linear()` годится для
  * любой длительности.
  */
 export const SPRING = {
@@ -42,11 +42,23 @@ export const SPRING = {
 
 export type EaseName = 'enter' | 'exit' | 'move'
 
-/** Доля пути по доле времени для пружины `SPRING` — для того, что движок ведёт из JS (курсор, круг нажатия). */
+const spring = springAt(SPRING.response, SPRING.damping)
+/** Где пружина успевает оказаться к концу отведённого времени (≈ 0,986). */
+const springEnd = spring(SPRING.settle / 1000)
+
+/**
+ * Доля пути по доле времени для пружины `SPRING` — для того, что движок ведёт
+ * из JS (курсор, круг нажатия), и для CSS-записи `SMOOTH`.
+ *
+ * Нормирована на `springEnd`: за `settle` пружина проходит 98,6 % пути,
+ * и без нормировки остаток 1,4 % добирался скачком в последнем кадре —
+ * курсор подползал к цели, замирал, не дойдя, и прыгал на место (07.10.2026).
+ * Теперь кривая приходит в 1 ровно в конце, форма пружины та же.
+ */
 export function smoothAt(p: number) {
   if (p <= 0) return 0
   if (p >= 1) return 1
-  return springAt(SPRING.response, SPRING.damping)((p * SPRING.settle) / 1000)
+  return spring((p * SPRING.settle) / 1000) / springEnd
 }
 
 /** Та же пружина для CSS — `linear()` по 40 точкам. */
@@ -187,8 +199,11 @@ export const APPEAR = {
  */
 export function springEase(response: number, damping: number, duration: number, points = 40) {
   const at = springAt(response, damping)
+  // Нормировка на значение в конце — как в `smoothAt`: пружина, не успевшая
+  // сесть за `duration`, иначе прыгала бы в последнем кадре к 1.
+  const end = at(duration / 1000)
   const values = Array.from({ length: points + 1 }, (_, i) =>
-    i === points ? 1 : Number(at((i / points) * (duration / 1000)).toFixed(4)),
+    i === points ? 1 : Number((at((i / points) * (duration / 1000)) / end).toFixed(4)),
   )
   return `linear(${values.join(', ')})`
 }
