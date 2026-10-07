@@ -124,6 +124,24 @@
   pointer-events: none;
 }
 
+/* Сцена без курсора: курсор скрыт, значок стоит сам по себе в свободном месте
+   холста — без отступа «под остриём» и вырастает из своего центра. */
+.OnbScene__cursor[data-hidden] {
+  display: none;
+}
+
+/* До первого кадра часов значок ещё не знает своего места — не показываем. */
+.OnbScene__cue:not([data-placed]) {
+  visibility: hidden;
+}
+
+.OnbScene__cue[data-free] .OnbScene__keys,
+.OnbScene__cue[data-free] .OnbScene__mouse {
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  transform-origin: 50% 50%;
+}
+
 .OnbScene__keys,
 .OnbScene__mouse {
   position: absolute;

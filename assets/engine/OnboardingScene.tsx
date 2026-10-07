@@ -147,6 +147,8 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
   const reduced = usePrefersReducedMotion()
   const preview = useContext(MotionPreviewContext)
   const broken = import.meta.env.DEV && timeline.problems.length > 0
+  /** Ни одного пути курсора: сцена из клавиш, печати в открытом поле и ответов системы. */
+  const cursorless = timeline.moves.length === 0
   const still = reduced || broken
   // Страница выгрузки в SVG ставит флаг до монтирования — читаем его здесь, а не при загрузке модуля.
   const [exporting] = useState(isExporting)
@@ -237,7 +239,7 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
         {!still && <div ref={rippleRef} className="OnbScene__ripple" />}
         {!still && <div className="OnbScene__ghost" />}
         {!still && cue && (
-          <div key={cue.start} className="OnbScene__cue" data-kind={cue.kind}>
+          <div key={cue.start} className="OnbScene__cue" data-kind={cue.kind} data-free={cursorless ? '' : undefined}>
             {cue.kind === 'key' && (
               <span className="OnbScene__keys">
                 {cue.label?.split('+').map((k) => (
@@ -272,7 +274,10 @@ export function OnboardingScene<S>({ story, children }: OnboardingSceneProps<S>)
             )}
           </div>
         )}
-        {!still && <SceneCursor ref={cursorRef} />}
+        {/* Курсору некуда ехать (только клавиши и ответы системы) — его нет
+            вовсе, клавиши стоят в свободном месте холста. Элемент остаётся
+            в разметке скрытым: его цвета читает выгрузка в SVG. */}
+        {!still && <SceneCursor ref={cursorRef} hidden={cursorless} />}
       </div>
 
       {broken && (
@@ -327,6 +332,7 @@ function createFrame<S>(
   let dropAt: { start: number; x: number; y: number } | null = null
   let pressedAt = -1
   let cueAt: number | null = null
+  let freeAt: { start: number; x: number; y: number } | null = null
   let dragAt: number | null = null
   let clickedAt = -1
   let clickedField: string | null = null
@@ -515,8 +521,24 @@ function createFrame<S>(
       set.setCue(cue ?? null)
     }
     const cueEl = canvasRef.current?.querySelector<HTMLElement>('.OnbScene__cue')
-    if (cueEl && cue) {
-      cueEl.style.transform = `translate(${pos.x}px, ${pos.y}px)`
+    const cueBox = cueEl?.firstElementChild as HTMLElement | null | undefined
+    if (cueEl && cue && cueBox) {
+      // Без курсора значок стоит в свободном месте холста — место выбирается
+      // один раз, когда значок появился, и дальше не едет.
+      if (cueEl.hasAttribute('data-free')) {
+        if (freeAt?.start !== cue.start) {
+          freeAt = { start: cue.start, ...freeSpot(canvasRef.current!, cueBox) }
+        }
+      } else freeAt = null
+      const at = freeAt ?? pos
+      cueEl.style.transform = `translate(${at.x}px, ${at.y}px)`
+      cueEl.toggleAttribute('data-placed', true)
+      // У края холста значок прижимается внутрь, а не уходит за край.
+      const x0 = at.x + cueBox.offsetLeft
+      const y0 = at.y + cueBox.offsetTop
+      const dx = clampShift(x0, cueBox.offsetWidth, SCENE.width)
+      const dy = clampShift(y0, cueBox.offsetHeight, SCENE.height)
+      cueBox.style.translate = dx || dy ? `${dx}px ${dy}px` : ''
       cueEl.toggleAttribute('data-pressed', t >= cue.press)
       cueEl.querySelectorAll('.OnbScene__key').forEach((k, i) => {
         k.toggleAttribute('data-pressed', t >= (cue.presses?.[i] ?? cue.press))
@@ -627,8 +649,76 @@ function registerForExport<S>(
  * читается как настоящий курсор человека и спорит с ним, а кружок — как
  * указатель сцены. Центр кружка — точка касания. Вид — в onboarding.css.
  */
-function SceneCursor({ ref }: { ref: React.Ref<HTMLDivElement> }) {
-  return <div ref={ref} className="OnbScene__cursor" />
+function SceneCursor({ ref, hidden }: { ref: React.Ref<HTMLDivElement>; hidden?: boolean }) {
+  return <div ref={ref} className="OnbScene__cursor" data-hidden={hidden ? '' : undefined} />
+}
+
+/** Сдвиг, который возвращает отрезок [start, start + size] внутрь холста с полем `SCENE.cueInset`. */
+function clampShift(start: number, size: number, limit: number) {
+  const inset = SCENE.cueInset
+  if (start < inset) return inset - start
+  if (start + size > limit - inset) return Math.max(inset - start, limit - inset - size - start)
+  return 0
+}
+
+/** Служебные слои холста — не содержимое, место значка от них не зависит. */
+const OVERLAY = '.OnbScene__cursor, .OnbScene__ripple, .OnbScene__ghost, .OnbScene__cue, .OnbScene__measure, .OnbScene__problems'
+
+/**
+ * Свободное место для значка, когда курсора нет: перебор позиций по сетке,
+ * выигрывает та, где значок меньше всего перекрывает содержимое (листья
+ * разметки — текст, поля, иконки — и плоскости с заливкой или рамкой, как
+ * окно) с запасом `SCENE.cueInset`; из равных —
+ * ближайшая к центру холста. Пустой холст — значит центр.
+ */
+function freeSpot(canvas: HTMLElement, box: HTMLElement): Point {
+  const c = canvas.getBoundingClientRect()
+  const k = c.width / SCENE.width || 1
+  const w = box.offsetWidth
+  const h = box.offsetHeight
+  const edge = SCENE.cueInset
+  const rects: { x: number; y: number; w: number; h: number }[] = []
+  canvas.querySelectorAll<HTMLElement>('*').forEach((el) => {
+    if (el.closest(OVERLAY)) return
+    if (el.closest('svg') !== null && !el.matches('svg')) return
+    const leaf = el.childElementCount === 0 || el.matches('input, textarea, button, svg, img')
+    // Плоскость (окно, карточка) мешает целиком, а не только своим текстом.
+    const cs = leaf ? null : getComputedStyle(el)
+    const surface =
+      cs !== null &&
+      (!/rgba\(.*, 0\)|transparent/.test(cs.backgroundColor) || parseFloat(cs.borderTopWidth) > 0)
+    if (!leaf && !surface) return
+    const r = el.getBoundingClientRect()
+    if (r.width === 0 || r.height === 0) return
+    // Сплошная подложка во весь холст (белая плоскость, затемнение) мешает одинаково везде — не в счёт.
+    if (r.width / k >= SCENE.width - 1 && r.height / k >= SCENE.height - 1) return
+    rects.push({ x: (r.left - c.left) / k, y: (r.top - c.top) / k, w: r.width / k, h: r.height / k })
+  })
+  const cx = (SCENE.width - w) / 2
+  const cy = (SCENE.height - h) / 2
+  const search = (pad: number) => {
+    let best = { x: cx, y: cy, score: Infinity, dist: Infinity }
+    for (let y = edge; y <= SCENE.height - edge - h; y += 2) {
+      for (let x = edge; x <= SCENE.width - edge - w; x += 2) {
+        let score = 0
+        for (const r of rects) {
+          const ox = Math.min(x + w, r.x + r.w + pad) - Math.max(x, r.x - pad)
+          const oy = Math.min(y + h, r.y + r.h + pad) - Math.max(y, r.y - pad)
+          if (ox > 0 && oy > 0) score += ox * oy
+        }
+        const dist = (x - cx) ** 2 + (y - cy) ** 2
+        if (score < best.score || (score === best.score && dist < best.dist)) best = { x, y, score, dist }
+      }
+    }
+    return best
+  }
+  // Сначала — с запасом от содержимого, потом вплотную; не нашлось чистого
+  // места — где перекрытие меньше всего.
+  for (const pad of [edge, edge / 2, 0]) {
+    const spot = search(pad)
+    if (spot.score === 0 || pad === 0) return { x: spot.x, y: spot.y }
+  }
+  return { x: cx, y: cy }
 }
 
 /* ── примитивы разметки сцены ──────────────────────────────────────────── */

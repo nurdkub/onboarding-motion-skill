@@ -819,7 +819,10 @@ async function build(root: HTMLElement, ctrl: SceneController) {
     `<defs><clipPath id="sc"><rect x="${(sr.left - rr.left).toFixed(2)}" y="${(sr.top - rr.top).toFixed(2)}" width="${sr.width.toFixed(2)}" height="${sr.height.toFixed(2)}"/></clipPath></defs>` +
     `<foreignObject width="${W}" height="${H}"><div xmlns="${XHTML_NS}" style="position:relative;width:${W}px;height:${H}px">${base}${stage}</div></foreignObject>` +
     `<g class="all" clip-path="url(#sc)"><g id="rio"><circle id="ri" r="${r.toFixed(2)}" fill="${rippleColor}"/></g>` +
-    `<path id="cu" d="${arrow}" fill="${cursorFill}" stroke="${cursorStroke}" stroke-width="${(3 * k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke"/></g></svg>`
+    (cursorEl.hasAttribute('data-hidden')
+      ? ''
+      : `<path id="cu" d="${arrow}" fill="${cursorFill}" stroke="${cursorStroke}" stroke-width="${(3 * k).toFixed(2)}" stroke-linejoin="round" paint-order="stroke"/>`) +
+    `</g></svg>`
 
   frame.remove()
   return {
