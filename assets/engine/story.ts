@@ -294,8 +294,13 @@ export function compile<S>(story: Story<S>): Timeline<S> {
         const grab = t
         moves.push({ start: t, end: t + BEAT.dragMove, target: beat.to })
         t += BEAT.dragMove
-        // Курсор над местом сброса — оно подсвечивается (наведение за курсором).
-        t += BEAT.hover
+        // Курсор над местом сброса — оно подсвечено и держится, пока груз не отпустят.
+        // Край колонки отпускают сразу: тянут край, а не кладут предмет.
+        if (beat.resize) t += BEAT.hover
+        else {
+          hots.push({ start: t, end: t + BEAT.dropHold, target: beat.to, state: 'hovered' })
+          t += BEAT.dropHold
+        }
         if (!beat.resize) {
           drags.push({ start: grab, end: t, from: beat.from })
           if (beat.apply) events.push({ at: t, apply: beat.apply })

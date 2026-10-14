@@ -349,20 +349,24 @@ function createFrame<S>(
     // сам переключатель, а не середина подписи.
     const aim = (node as HTMLElement).dataset.sceneAim
     const c = canvas.getBoundingClientRect()
+    // Масштаб — по фактической ширине холста на экране, а не константой
+    // `SCENE.scale`: сцену, увеличенную обёрткой снаружи (welcome-слайды),
+    // константа меряла бы мимо, и курсор жал бы не туда (07.10.2026).
+    const k = scaleOf(c)
     // Поле ввода: курсор нажимает у начала текста, а не в середину — там
     // появится каретка, и глаз увидит её прямо у острия (решение 06.10.2026).
-    const field = !aim && node.querySelector<HTMLElement>('input:not([type=checkbox]):not([type=radio]), textarea')
+    const field = !aim && node.querySelector<HTMLElement>(TEXT_FIELD)
     if (field) {
       const f = field.getBoundingClientRect()
       return {
-        x: (f.left + Math.min(28 * SCENE.scale, f.width / 4) - c.left) / SCENE.scale,
-        y: (f.top + f.height / 2 - c.top) / SCENE.scale,
+        x: (f.left + Math.min(28 * k, f.width / 4) - c.left) / k,
+        y: (f.top + f.height / 2 - c.top) / k,
       }
     }
     const r = ((aim && node.querySelector(aim)) || node).getBoundingClientRect()
     return {
-      x: (r.left + r.width / 2 - c.left) / SCENE.scale,
-      y: (r.top + r.height / 2 - c.top) / SCENE.scale,
+      x: (r.left + r.width / 2 - c.left) / k,
+      y: (r.top + r.height / 2 - c.top) / k,
     }
   }
 
@@ -375,13 +379,14 @@ function createFrame<S>(
     const canvas = canvasRef.current
     if (!canvas) return null
     const c = canvas.getBoundingClientRect()
+    const k = scaleOf(c)
     let best: { id: string; area: number } | null = null
     canvas.querySelectorAll<HTMLElement>('[data-scene-target]').forEach((node) => {
       const r = node.getBoundingClientRect()
-      const left = (r.left - c.left) / SCENE.scale
-      const top = (r.top - c.top) / SCENE.scale
-      const w = r.width / SCENE.scale
-      const h = r.height / SCENE.scale
+      const left = (r.left - c.left) / k
+      const top = (r.top - c.top) / k
+      const w = r.width / k
+      const h = r.height / k
       if (p.x < left || p.x > left + w || p.y < top || p.y > top + h) return
       if (!best || w * h < best.area) best = { id: node.dataset.sceneTarget!, area: w * h }
     })
@@ -411,7 +416,7 @@ function createFrame<S>(
     if (lastHit && lastHit.start !== clickedAt) {
       clickedAt = lastHit.start
       const node = canvasRef.current?.querySelector(`[data-scene-target="${CSS.escape(lastHit.target)}"]`)
-      clickedField = node?.querySelector('input:not([type=checkbox]):not([type=radio]), textarea') ? lastHit.target : null
+      clickedField = node?.querySelector(TEXT_FIELD) ? lastHit.target : null
     }
     if (!lastHit) clickedField = null
     const focus = typed ?? (clickedField ? { target: clickedField } : undefined)
@@ -671,9 +676,26 @@ const OVERLAY = '.OnbScene__cursor, .OnbScene__ripple, .OnbScene__ghost, .OnbSce
  * окно) с запасом `SCENE.cueInset`; из равных —
  * ближайшая к центру холста. Пустой холст — значит центр.
  */
+/**
+ * Сколько экранных пикселей в пикселе холста. Обычно это `SCENE.scale`, но
+ * сцену может увеличить обёртка снаружи (`transform: scale`, `zoom`) — тогда
+ * координаты из `getBoundingClientRect` переводятся в холст по фактической
+ * ширине, иначе курсор целится мимо.
+ */
+/**
+ * Поле, в которое печатают: у него курсор жмёт у начала текста и ставит каретку.
+ * Скрытый `input type="file"` зоны загрузки полем не считается — иначе курсор
+ * ехал к «началу текста» невидимого поля, в угол холста (14.10.2026).
+ */
+const TEXT_FIELD = 'input:not([type=checkbox]):not([type=radio]):not([type=file]):not([type=hidden]), textarea'
+
+function scaleOf(canvasRect: DOMRect) {
+  return canvasRect.width / SCENE.width || SCENE.scale
+}
+
 function freeSpot(canvas: HTMLElement, box: HTMLElement): Point {
   const c = canvas.getBoundingClientRect()
-  const k = c.width / SCENE.width || 1
+  const k = scaleOf(c)
   const w = box.offsetWidth
   const h = box.offsetHeight
   const edge = SCENE.cueInset
@@ -766,7 +788,7 @@ export function SceneTarget({ id, inline = false, aim, children }: SceneTargetPr
   // раскладке: начало текста поля плюс ширина набранного его же шрифтом.
   useLayoutEffect(() => {
     const caret = caretRef.current
-    const input = ref.current?.querySelector<HTMLInputElement>('input:not([type=checkbox]):not([type=radio]), textarea')
+    const input = ref.current?.querySelector<HTMLInputElement>(TEXT_FIELD)
     if (!caret || !input || !ref.current) return
     const cs = getComputedStyle(input)
     const ctx = document.createElement('canvas').getContext('2d')!
